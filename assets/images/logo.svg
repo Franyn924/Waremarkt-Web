@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" aria-label="Waremarkt">
+  <!-- Cart body -->
+  <path d="M10 14 L16 14 L20 40 L50 40 L54 20 L22 20" stroke="#0A2E50" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Cart wheels -->
+  <circle cx="24" cy="50" r="3.5" fill="#0A2E50"/>
+  <circle cx="46" cy="50" r="3.5" fill="#0A2E50"/>
+  <!-- Open box (amber) -->
+  <path d="M28 22 L46 22 L44 36 L26 36 Z" fill="#FFC107"/>
+  <path d="M28 22 L32 26 L42 26 L46 22" stroke="#FB8F1A" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
+  <!-- Arrows out of box -->
+  <path d="M36 24 L36 12 M32 16 L36 12 L40 16" stroke="#007BFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M46 28 L56 28 M52 24 L56 28 L52 32" stroke="#007BFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Waremarkt — Soluciones logísticas inteligentes. Tecnología, computación y accesorios con envíos a US y Latinoamérica.">
+  <meta name="theme-color" content="#0A2E50">
+  <title>Waremarkt — Soluciones Logísticas Inteligentes</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="assets/js/cart.js"></script>
+  <script src="assets/js/i18n.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: { DEFAULT: '#0A2E50', deep: '#07213A', light: '#173F69' },
+            azul: { DEFAULT: '#007BFF', light: '#3E9BFF' },
+            amber: { DEFAULT: '#FFC107' },
+            naranja: { DEFAULT: '#FB8F1A' },
+            carbon: { DEFAULT: '#343A40' }
+          },
+          fontFamily: {
+            display: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
+            body: ['"Inter Tight"', 'system-ui', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter Tight', system-ui, sans-serif; }
+
+    .grid-bg {
+      background-image:
+        linear-gradient(rgba(10,46,80,0.97), rgba(10,46,80,0.92)),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'><path fill='none' stroke='%23FFFFFF' stroke-opacity='0.08' stroke-width='1' d='M0 0h40v40H0z M0 20h40 M20 0v40'/></svg>");
+    }
+
+    .noise::before {
+      content: '';
+      position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/></svg>");
+      opacity: 0.08;
+      pointer-events: none;
+      mix-blend-mode: overlay;
+    }
+
+    .gradient-text {
+      background: linear-gradient(135deg, #FFC107 0%, #FB8F1A 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    @keyframes reveal {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .reveal { animation: reveal 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+    .reveal-1 { animation-delay: 0.1s; }
+    .reveal-2 { animation-delay: 0.25s; }
+    .reveal-3 { animation-delay: 0.4s; }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+    .float { animation: float 6s ease-in-out infinite; }
+
+    .card-hover {
+      transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.4s;
+    }
+    .card-hover:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 20px 40px -12px rgba(10,46,80,0.25);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #FFC107 0%, #FB8F1A 100%);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 24px -8px rgba(251,143,26,0.5);
+    }
+
+    .marquee {
+      display: flex;
+      animation: scroll 30s linear infinite;
+    }
+    @keyframes scroll {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .reveal, .float, .marquee, html { animation: none !important; scroll-behavior: auto; }
+    }
+
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="bg-white text-carbon antialiased">
+
+  <!-- ========== HEADER ========== -->
+  <header x-data="{ open: false, scrolled: false }"
+          x-init="window.addEventListener('scroll', () => scrolled = window.scrollY > 20)"
+          :class="scrolled ? 'bg-white/95 backdrop-blur-md shadow-sm' : 'bg-white'"
+          class="fixed top-0 inset-x-0 z-50 transition-all">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16 lg:h-20">
+
+        <!-- Logo -->
+        <a href="#" class="flex items-center gap-2.5 group">
+          <img src="assets/images/logo.svg" alt="Waremarkt" class="w-11 h-11 lg:w-12 lg:h-12">
+          <div class="leading-tight">
+            <div class="font-display font-bold text-navy text-lg lg:text-xl tracking-tight">
+              WARE<span class="text-azul">MARKT</span>
+            </div>
+            <div data-i18n="header.tagline" class="text-[9px] lg:text-[10px] text-carbon/70 font-semibold tracking-[0.15em] uppercase hidden sm:block">Soluciones logísticas inteligentes</div>
+          </div>
+        </a>
+
+        <!-- Desktop nav -->
+        <nav class="hidden lg:flex items-center gap-8">
+          <a href="#categorias" data-i18n="nav.catalog" class="text-sm font-medium text-carbon hover:text-azul transition">Catálogo</a>
+          <a href="#productos" data-i18n="nav.products" class="text-sm font-medium text-carbon hover:text-azul transition">Productos</a>
+          <a href="#servicios" data-i18n="nav.services" class="text-sm font-medium text-carbon hover:text-azul transition">Servicios</a>
+          <a href="#envios" data-i18n="nav.shipping" class="text-sm font-medium text-carbon hover:text-azul transition">Envíos</a>
+          <a href="#contacto" data-i18n="nav.contact" class="text-sm font-medium text-carbon hover:text-azul transition">Contacto</a>
+        </nav>
+
+        <!-- Desktop CTA -->
+        <div class="hidden lg:flex items-center gap-3">
+          <button data-lang-switch onclick="WMi18n.toggle()" class="text-xs font-bold tracking-wider text-navy hover:text-azul border border-navy/20 hover:border-azul rounded-full w-10 h-10 flex items-center justify-center transition" title="Switch language">EN</button>
+          <a href="https://wa.me/14079434098" class="flex items-center gap-2 text-sm font-medium text-navy hover:text-azul transition">
+            <i data-lucide="message-circle" class="w-4 h-4"></i>
+            <span data-i18n="nav.whatsapp">WhatsApp</span>
+          </a>
+          <a href="tienda.html" data-i18n="nav.buy_now" class="btn-primary text-navy-deep font-semibold text-sm px-5 py-2.5 rounded-full">
+            Comprar ahora
+          </a>
+          <a href="carrito.html" data-i18n-aria="nav.cart_aria" class="relative w-11 h-11 rounded-full bg-navy/5 hover:bg-navy/10 flex items-center justify-center transition" aria-label="Carrito">
+            <i data-lucide="shopping-cart" class="w-5 h-5 text-navy"></i>
+            <span id="cart-badge" class="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-naranja text-white text-[11px] font-bold rounded-full flex items-center justify-center hidden">0</span>
+          </a>
+        </div>
+
+        <!-- Mobile toggle -->
+        <button @click="open = !open" data-i18n-aria="nav.menu_aria" class="lg:hidden w-10 h-10 flex items-center justify-center rounded-lg hover:bg-navy/5" aria-label="Abrir menú">
+          <i data-lucide="menu" x-show="!open" class="w-6 h-6 text-navy"></i>
+          <i data-lucide="x" x-show="open" x-cloak class="w-6 h-6 text-navy"></i>
+        </button>
+      </div>
+
+      <!-- Mobile menu -->
+      <div x-show="open" x-cloak x-transition
+           @click.outside="open = false"
+           class="lg:hidden border-t border-navy/10 py-4 space-y-1">
+        <a href="tienda.html" data-i18n="nav.shop_full" class="block px-4 py-3 text-carbon font-medium hover:bg-navy/5 rounded-lg">Tienda completa</a>
+        <a href="carrito.html" data-i18n="nav.cart" class="block px-4 py-3 text-carbon font-medium hover:bg-navy/5 rounded-lg">Carrito</a>
+        <a href="#categorias" @click="open = false" data-i18n="nav.catalog" class="block px-4 py-3 text-carbon font-medium hover:bg-navy/5 rounded-lg">Catálogo</a>
+        <a href="#productos" @click="open = false" data-i18n="nav.products" class="block px-4 py-3 text-carbon font-medium hover:bg-navy/5 rounded-lg">Productos</a>
+        <a href="#servicios" @click="open = false" data-i18n="nav.services" class="block px-4 py-3 text-carbon font-medium hover:bg-navy/5 rounded-lg">Servicios</a>
+        <a href="#envios" @click="open = false" data-i18n="nav.shipping" class="block px-4 py-3 text-carbon font-medium hover:bg-navy/5 rounded-lg">Envíos</a>
+        <a href="#contacto" @click="open = false" data-i18n="nav.contact" class="block px-4 py-3 text-carbon font-medium hover:bg-navy/5 rounded-lg">Contacto</a>
+        <div class="pt-3 flex flex-col gap-2 px-2">
+          <button data-lang-switch onclick="WMi18n.toggle()" class="flex items-center justify-center gap-2 border-2 border-navy/30 text-navy font-semibold py-3 rounded-full">EN</button>
+          <a href="https://wa.me/14079434098" class="flex items-center justify-center gap-2 border-2 border-navy text-navy font-semibold py-3 rounded-full">
+            <i data-lucide="message-circle" class="w-4 h-4"></i> <span data-i18n="nav.whatsapp">WhatsApp</span>
+          </a>
+          <a href="tienda.html" data-i18n="nav.buy_now" class="btn-primary text-navy-deep font-semibold py-3 rounded-full text-center">
+            Comprar ahora
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========== HERO ========== -->
+  <section class="relative grid-bg noise pt-28 lg:pt-36 pb-16 lg:pb-24 overflow-hidden">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
+      <div class="grid lg:grid-cols-12 gap-10 lg:gap-12 items-center">
+
+        <!-- Texto -->
+        <div class="lg:col-span-7 text-white">
+          <div class="reveal reveal-1 inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-1.5 mb-6">
+            <span class="w-2 h-2 rounded-full bg-amber animate-pulse"></span>
+            <span data-i18n="hero.badge" class="text-xs font-medium tracking-wide">Envíos activos a US + LatAm</span>
+          </div>
+
+          <h1 data-i18n-html="hero.h1" class="reveal reveal-1 font-display font-bold text-4xl sm:text-5xl lg:text-6xl xl:text-7xl leading-[1.05] tracking-tight mb-6">
+            Tecnología que <span class="gradient-text">llega</span>,<br>
+            logística que <span class="gradient-text">piensa</span>.
+          </h1>
+
+          <p data-i18n="hero.p" class="reveal reveal-2 text-base sm:text-lg text-white/80 max-w-xl mb-8 leading-relaxed">
+            Computación, accesorios y soluciones tech entregadas con infraestructura logística inteligente.
+            Compra online, paga con Stripe, WhatsApp o transferencia.
+          </p>
+
+          <div class="reveal reveal-3 flex flex-col sm:flex-row gap-3">
+            <a href="#productos" class="btn-primary text-navy-deep font-semibold px-7 py-4 rounded-full text-center inline-flex items-center justify-center gap-2">
+              <span data-i18n="hero.cta_primary">Ver catálogo</span>
+              <i data-lucide="arrow-right" class="w-5 h-5"></i>
+            </a>
+            <a href="https://wa.me/14079434098" class="border-2 border-white/30 hover:border-white text-white font-semibold px-7 py-4 rounded-full text-center inline-flex items-center justify-center gap-2 transition">
+              <i data-lucide="message-circle" class="w-5 h-5"></i>
+              <span data-i18n="hero.cta_secondary">Hablar por WhatsApp</span>
+            </a>
+          </div>
+
+          <!-- Stats -->
+          <div class="reveal reveal-3 grid grid-cols-3 gap-4 sm:gap-8 mt-10 lg:mt-14 pt-8 border-t border-white/10">
+            <div>
+              <div class="font-display text-2xl sm:text-3xl font-bold text-amber">24h</div>
+              <div data-i18n="hero.stat1_label" class="text-xs sm:text-sm text-white/60 mt-1">Procesamiento</div>
+            </div>
+            <div>
+              <div class="font-display text-2xl sm:text-3xl font-bold text-amber">20+</div>
+              <div data-i18n="hero.stat2_label" class="text-xs sm:text-sm text-white/60 mt-1">Países LatAm</div>
+            </div>
+            <div>
+              <div class="font-display text-2xl sm:text-3xl font-bold text-amber">100%</div>
+              <div data-i18n="hero.stat3_label" class="text-xs sm:text-sm text-white/60 mt-1">Pagos seguros</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Visual -->
+        <div class="lg:col-span-5 relative">
+          <div class="reveal reveal-2 relative float">
+            <div class="absolute -inset-4 bg-gradient-to-tr from-azul/30 to-amber/30 blur-3xl rounded-full"></div>
+            <div class="relative bg-white/5 backdrop-blur-xl border border-white/20 rounded-3xl p-6 lg:p-8">
+              <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-2 text-white/80 text-xs">
+                  <i data-lucide="package-check" class="w-4 h-4 text-amber"></i>
+                  <span data-i18n="hero.mockup_order">Orden #WM-2847</span>
+                </div>
+                <span data-i18n="hero.mockup_status" class="text-xs font-semibold bg-amber/20 text-amber px-2 py-1 rounded-full">En tránsito</span>
+              </div>
+
+              <div class="space-y-3">
+                <div class="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+                  <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-azul to-navy-light flex items-center justify-center">
+                    <i data-lucide="laptop" class="w-6 h-6 text-white"></i>
+                  </div>
+                  <div class="flex-1">
+                    <div data-i18n="hero.mockup_p1_name" class="text-white text-sm font-semibold">Laptop Gaming</div>
+                    <div data-i18n="hero.mockup_p1_desc" class="text-white/60 text-xs">RTX 4060 · 16GB RAM</div>
+                  </div>
+                  <div class="text-amber font-display font-bold">$1,299</div>
+                </div>
+
+                <div class="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+                  <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-amber to-naranja flex items-center justify-center">
+                    <i data-lucide="headphones" class="w-6 h-6 text-navy-deep"></i>
+                  </div>
+                  <div class="flex-1">
+                    <div data-i18n="hero.mockup_p2_name" class="text-white text-sm font-semibold">Audífonos Pro</div>
+                    <div data-i18n="hero.mockup_p2_desc" class="text-white/60 text-xs">Wireless · Noise cancel</div>
+                  </div>
+                  <div class="text-amber font-display font-bold">$189</div>
+                </div>
+
+                <div class="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+                  <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-naranja to-amber flex items-center justify-center">
+                    <i data-lucide="mouse" class="w-6 h-6 text-navy-deep"></i>
+                  </div>
+                  <div class="flex-1">
+                    <div data-i18n="hero.mockup_p3_name" class="text-white text-sm font-semibold">Mouse Ergonómico</div>
+                    <div data-i18n="hero.mockup_p3_desc" class="text-white/60 text-xs">Bluetooth · 7 botones</div>
+                  </div>
+                  <div class="text-amber font-display font-bold">$59</div>
+                </div>
+              </div>
+
+              <div class="mt-6 pt-6 border-t border-white/10 flex items-center justify-between">
+                <span data-i18n="hero.mockup_delivery_label" class="text-white/60 text-xs">Entrega estimada</span>
+                <span data-i18n="hero.mockup_delivery_value" class="text-white font-semibold text-sm">2-5 días hábiles</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== MARCAS MARQUEE ========== -->
+  <section class="bg-navy-deep border-y border-white/5 py-6 overflow-hidden">
+    <div class="marquee whitespace-nowrap text-white/40 font-display font-semibold text-xl lg:text-2xl tracking-wider">
+      <div class="flex items-center gap-12 px-6">
+        <span>HP</span><span>•</span>
+        <span>DELL</span><span>•</span>
+        <span>LENOVO</span><span>•</span>
+        <span>ASUS</span><span>•</span>
+        <span>LOGITECH</span><span>•</span>
+        <span>APPLE</span><span>•</span>
+        <span>SAMSUNG</span><span>•</span>
+        <span>MICROSOFT</span><span>•</span>
+      </div>
+      <div class="flex items-center gap-12 px-6" aria-hidden="true">
+        <span>HP</span><span>•</span>
+        <span>DELL</span><span>•</span>
+        <span>LENOVO</span><span>•</span>
+        <span>ASUS</span><span>•</span>
+        <span>LOGITECH</span><span>•</span>
+        <span>APPLE</span><span>•</span>
+        <span>SAMSUNG</span><span>•</span>
+        <span>MICROSOFT</span><span>•</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== CATEGORÍAS ========== -->
+  <section id="categorias" class="py-20 lg:py-28">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="max-w-2xl mb-12 lg:mb-16">
+        <span data-i18n="cats.kicker" class="inline-block text-xs font-bold uppercase tracking-widest text-naranja mb-3">Catálogo</span>
+        <h2 data-i18n-html="cats.h2" class="font-display font-bold text-3xl sm:text-4xl lg:text-5xl text-navy leading-tight">
+          Categorías pensadas para <span class="text-azul">tu trabajo y tu gaming</span>.
+        </h2>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-5 lg:gap-6">
+        <!-- Computación -->
+        <a href="#productos" class="card-hover group relative rounded-3xl overflow-hidden bg-gradient-to-br from-navy to-navy-light p-8 lg:p-10 min-h-[320px] lg:min-h-[420px] flex flex-col justify-between">
+          <div class="absolute top-6 right-6 w-32 h-32 lg:w-48 lg:h-48 rounded-full bg-azul/20 blur-3xl"></div>
+          <div class="relative">
+            <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center mb-6">
+              <i data-lucide="laptop" class="w-7 h-7 text-amber"></i>
+            </div>
+            <div data-i18n="cats.computacion_count" class="text-white/60 text-xs font-medium uppercase tracking-wider mb-2">18 productos</div>
+            <h3 data-i18n="cats.computacion" class="font-display font-bold text-white text-2xl lg:text-3xl mb-3">Computación</h3>
+            <p data-i18n="cats.computacion_desc" class="text-white/70 text-sm lg:text-base max-w-sm">Laptops, desktops, workstations y componentes para gamers y profesionales.</p>
+          </div>
+          <div class="relative flex items-center gap-2 text-amber font-semibold text-sm group-hover:gap-4 transition-all">
+            <span data-i18n="cats.explore">Explorar categoría</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </div>
+        </a>
+
+        <!-- Accesorios -->
+        <a href="#productos" class="card-hover group relative rounded-3xl overflow-hidden bg-gradient-to-br from-amber to-naranja p-8 lg:p-10 min-h-[320px] lg:min-h-[420px] flex flex-col justify-between">
+          <div class="absolute top-6 right-6 w-32 h-32 lg:w-48 lg:h-48 rounded-full bg-white/20 blur-3xl"></div>
+          <div class="relative">
+            <div class="w-14 h-14 rounded-2xl bg-navy-deep/20 backdrop-blur-sm flex items-center justify-center mb-6">
+              <i data-lucide="headphones" class="w-7 h-7 text-navy-deep"></i>
+            </div>
+            <div data-i18n="cats.accesorios_count" class="text-navy-deep/70 text-xs font-medium uppercase tracking-wider mb-2">32 productos</div>
+            <h3 data-i18n="cats.accesorios" class="font-display font-bold text-navy-deep text-2xl lg:text-3xl mb-3">Accesorios</h3>
+            <p data-i18n="cats.accesorios_desc" class="text-navy-deep/80 text-sm lg:text-base max-w-sm">Teclados, mouses, audífonos, monitores y todo lo que potencia tu setup.</p>
+          </div>
+          <div class="relative flex items-center gap-2 text-navy-deep font-semibold text-sm group-hover:gap-4 transition-all">
+            <span data-i18n="cats.explore">Explorar categoría</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== PRODUCTOS DESTACADOS ========== -->
+  <section id="productos" class="py-20 lg:py-28 bg-gradient-to-b from-white to-navy/5">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-12 lg:mb-16">
+        <div class="max-w-2xl">
+          <span data-i18n="featured.kicker" class="inline-block text-xs font-bold uppercase tracking-widest text-naranja mb-3">Destacados</span>
+          <h2 data-i18n-html="featured.h2" class="font-display font-bold text-3xl sm:text-4xl lg:text-5xl text-navy leading-tight">
+            Productos que <span class="text-azul">se mueven rápido</span>.
+          </h2>
+        </div>
+        <a href="tienda.html" class="inline-flex items-center gap-2 text-navy font-semibold hover:text-azul transition">
+          <span data-i18n="featured.see_all">Ver todo el catálogo</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </a>
+      </div>
+
+      <div id="featured-grid" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 lg:gap-6">
+
+        <!-- Producto 1 -->
+        <article class="card-hover bg-white rounded-2xl overflow-hidden border border-navy/10">
+          <div class="relative aspect-square bg-gradient-to-br from-navy/5 to-azul/10 flex items-center justify-center overflow-hidden">
+            <i data-lucide="laptop" class="w-20 h-20 text-navy/30"></i>
+            <span class="absolute top-3 left-3 bg-naranja text-white text-xs font-bold px-2 py-1 rounded-md">-15%</span>
+          </div>
+          <div class="p-5">
+            <div class="text-xs text-carbon/60 uppercase tracking-wider font-medium mb-1">Computación</div>
+            <h3 class="font-display font-bold text-navy text-base mb-2 leading-tight">Laptop Gaming RTX 4060</h3>
+            <div class="flex items-center gap-2 mb-4">
+              <span class="font-display font-bold text-lg text-navy">$1,299</span>
+              <span class="text-sm text-carbon/50 line-through">$1,529</span>
+            </div>
+            <button class="w-full bg-navy hover:bg-navy-deep text-white font-semibold text-sm py-2.5 rounded-full transition flex items-center justify-center gap-2">
+              <i data-lucide="shopping-cart" class="w-4 h-4"></i> Añadir
+            </button>
+          </div>
+        </article>
+
+        <!-- Producto 2 -->
+        <article class="card-hover bg-white rounded-2xl overflow-hidden border border-navy/10">
+          <div class="relative aspect-square bg-gradient-to-br from-amber/10 to-naranja/20 flex items-center justify-center overflow-hidden">
+            <i data-lucide="headphones" class="w-20 h-20 text-naranja/40"></i>
+          </div>
+          <div class="p-5">
+            <div class="text-xs text-carbon/60 uppercase tracking-wider font-medium mb-1">Accesorios</div>
+            <h3 class="font-display font-bold text-navy text-base mb-2 leading-tight">Audífonos Pro Wireless</h3>
+            <div class="flex items-center gap-2 mb-4">
+              <span class="font-display font-bold text-lg text-navy">$189</span>
+            </div>
+            <button class="w-full bg-navy hover:bg-navy-deep text-white font-semibold text-sm py-2.5 rounded-full transition flex items-center justify-center gap-2">
+              <i data-lucide="shopping-cart" class="w-4 h-4"></i> Añadir
+            </button>
+          </div>
+        </article>
+
+        <!-- Producto 3 -->
+        <article class="card-hover bg-white rounded-2xl overflow-hidden border border-navy/10">
+          <div class="relative aspect-square bg-gradient-to-br from-azul/10 to-navy/10 flex items-center justify-center overflow-hidden">
+            <i data-lucide="keyboard" class="w-20 h-20 text-azul/40"></i>
+            <span class="absolute top-3 left-3 bg-amber text-navy-deep text-xs font-bold px-2 py-1 rounded-md">NUEVO</span>
+          </div>
+          <div class="p-5">
+            <div class="text-xs text-carbon/60 uppercase tracking-wider font-medium mb-1">Accesorios</div>
+            <h3 class="font-display font-bold text-navy text-base mb-2 leading-tight">Teclado Mecánico RGB</h3>
+            <div class="flex items-center gap-2 mb-4">
+              <span class="font-display font-bold text-lg text-navy">$129</span>
+            </div>
+            <button class="w-full bg-navy hover:bg-navy-deep text-white font-semibold text-sm py-2.5 rounded-full transition flex items-center justify-center gap-2">
+              <i data-lucide="shopping-cart" class="w-4 h-4"></i> Añadir
+            </button>
+          </div>
+        </article>
+
+        <!-- Producto 4 -->
+        <article class="card-hover bg-white rounded-2xl overflow-hidden border border-navy/10">
+          <div class="relative aspect-square bg-gradient-to-br from-naranja/10 to-amber/20 flex items-center justify-center overflow-hidden">
+            <i data-lucide="monitor" class="w-20 h-20 text-amber/60"></i>
+          </div>
+          <div class="p-5">
+            <div class="text-xs text-carbon/60 uppercase tracking-wider font-medium mb-1">Computación</div>
+            <h3 class="font-display font-bold text-navy text-base mb-2 leading-tight">Monitor 27" 144Hz</h3>
+            <div class="flex items-center gap-2 mb-4">
+              <span class="font-display font-bold text-lg text-navy">$349</span>
+            </div>
+            <button class="w-full bg-navy hover:bg-navy-deep text-white font-semibold text-sm py-2.5 rounded-full transition flex items-center justify-center gap-2">
+              <i data-lucide="shopping-cart" class="w-4 h-4"></i> Añadir
+            </button>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== CÓMO COMPRAR ========== -->
+  <section id="servicios" class="py-20 lg:py-28 bg-navy relative overflow-hidden">
+    <div class="absolute top-0 right-0 w-96 h-96 bg-azul/20 blur-3xl rounded-full"></div>
+    <div class="absolute bottom-0 left-0 w-96 h-96 bg-amber/10 blur-3xl rounded-full"></div>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
+      <div class="max-w-2xl mb-14 lg:mb-20">
+        <span data-i18n="pay.kicker" class="inline-block text-xs font-bold uppercase tracking-widest text-amber mb-3">Formas de pago</span>
+        <h2 data-i18n-html="pay.h2" class="font-display font-bold text-3xl sm:text-4xl lg:text-5xl text-white leading-tight">
+          Tres maneras de comprar,<br><span class="gradient-text">una experiencia fluida</span>.
+        </h2>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-5 lg:gap-6">
+
+        <!-- Stripe -->
+        <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-6 lg:p-8 hover:bg-white/10 transition">
+          <div class="w-14 h-14 rounded-2xl bg-azul/20 flex items-center justify-center mb-5">
+            <i data-lucide="credit-card" class="w-7 h-7 text-azul-light"></i>
+          </div>
+          <div class="text-amber font-display font-bold text-3xl mb-2">01</div>
+          <h3 data-i18n="pay.card_title" class="font-display font-bold text-white text-xl mb-3">Tarjeta con Stripe</h3>
+          <p data-i18n="pay.card_desc" class="text-white/70 text-sm leading-relaxed mb-5">
+            Checkout seguro con Visa, Mastercard, Amex y billeteras digitales.
+            Confirmación inmediata y tracking al instante.
+          </p>
+          <ul class="space-y-2 text-sm text-white/80">
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber"></i> <span data-i18n="pay.card_feat1">Pago encriptado SSL</span></li>
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber"></i> <span data-i18n="pay.card_feat2">Confirmación en segundos</span></li>
+          </ul>
+        </div>
+
+        <!-- WhatsApp -->
+        <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-6 lg:p-8 hover:bg-white/10 transition">
+          <div class="w-14 h-14 rounded-2xl bg-green-500/20 flex items-center justify-center mb-5">
+            <i data-lucide="message-circle" class="w-7 h-7 text-green-400"></i>
+          </div>
+          <div class="text-amber font-display font-bold text-3xl mb-2">02</div>
+          <h3 data-i18n="pay.wa_title" class="font-display font-bold text-white text-xl mb-3">WhatsApp Business</h3>
+          <p data-i18n="pay.wa_desc" class="text-white/70 text-sm leading-relaxed mb-5">
+            Escríbenos y cerramos la compra con atención humana.
+            Ideal si necesitas asesoría antes de pagar.
+          </p>
+          <ul class="space-y-2 text-sm text-white/80">
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber"></i> <span data-i18n="pay.wa_feat1">Asesor en tiempo real</span></li>
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber"></i> <span data-i18n="pay.wa_feat2">+1 407 943 4098</span></li>
+          </ul>
+        </div>
+
+        <!-- Transferencia -->
+        <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-6 lg:p-8 hover:bg-white/10 transition">
+          <div class="w-14 h-14 rounded-2xl bg-amber/20 flex items-center justify-center mb-5">
+            <i data-lucide="landmark" class="w-7 h-7 text-amber"></i>
+          </div>
+          <div class="text-amber font-display font-bold text-3xl mb-2">03</div>
+          <h3 data-i18n="pay.tr_title" class="font-display font-bold text-white text-xl mb-3">Transferencia</h3>
+          <p data-i18n="pay.tr_desc" class="text-white/70 text-sm leading-relaxed mb-5">
+            Pago directo por ACH o wire transfer.
+            Enviamos datos bancarios tras confirmar tu pedido.
+          </p>
+          <ul class="space-y-2 text-sm text-white/80">
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber"></i> <span data-i18n="pay.tr_feat1">ACH / Wire disponible</span></li>
+            <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber"></i> <span data-i18n="pay.tr_feat2">Envío al confirmar</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== ENVÍOS US + LATAM ========== -->
+  <section id="envios" class="py-20 lg:py-28">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+
+        <div>
+          <span data-i18n="ship.kicker" class="inline-block text-xs font-bold uppercase tracking-widest text-naranja mb-3">Cobertura</span>
+          <h2 data-i18n-html="ship.h2" class="font-display font-bold text-3xl sm:text-4xl lg:text-5xl text-navy leading-tight mb-6">
+            Infraestructura logística <span class="text-azul">US ↔ LatAm</span>.
+          </h2>
+          <p data-i18n="ship.p" class="text-carbon/80 text-base lg:text-lg leading-relaxed mb-8 max-w-lg">
+            Envíos consolidados desde Florida con redistribución a más de 20 países.
+            Tracking en tiempo real desde el pago hasta tu puerta.
+          </p>
+
+          <div class="space-y-4">
+            <div class="flex items-start gap-4">
+              <div class="w-10 h-10 rounded-xl bg-azul/10 flex items-center justify-center flex-shrink-0">
+                <i data-lucide="map-pin" class="w-5 h-5 text-azul"></i>
+              </div>
+              <div>
+                <div data-i18n="ship.hub_title" class="font-display font-semibold text-navy mb-1">Hub central en Florida</div>
+                <div data-i18n="ship.hub_desc" class="text-sm text-carbon/70">Procesamiento en 24h desde recepción del pedido.</div>
+              </div>
+            </div>
+
+            <div class="flex items-start gap-4">
+              <div class="w-10 h-10 rounded-xl bg-amber/20 flex items-center justify-center flex-shrink-0">
+                <i data-lucide="plane" class="w-5 h-5 text-naranja"></i>
+              </div>
+              <div>
+                <div data-i18n="ship.routes_title" class="font-display font-semibold text-navy mb-1">Rutas aéreas y marítimas</div>
+                <div data-i18n="ship.routes_desc" class="text-sm text-carbon/70">Eliges velocidad vs costo según tu urgencia.</div>
+              </div>
+            </div>
+
+            <div class="flex items-start gap-4">
+              <div class="w-10 h-10 rounded-xl bg-navy/10 flex items-center justify-center flex-shrink-0">
+                <i data-lucide="package-check" class="w-5 h-5 text-navy"></i>
+              </div>
+              <div>
+                <div data-i18n="ship.track_title" class="font-display font-semibold text-navy mb-1">Tracking end-to-end</div>
+                <div data-i18n="ship.track_desc" class="text-sm text-carbon/70">Código único y notificaciones por cada etapa.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="relative">
+          <div class="aspect-square rounded-3xl bg-gradient-to-br from-navy to-navy-light p-6 lg:p-10 relative overflow-hidden">
+            <div class="absolute inset-0 opacity-30" style="background-image: radial-gradient(circle at 50% 50%, rgba(255,193,7,0.4) 0%, transparent 60%);"></div>
+
+            <div class="relative h-full flex flex-col justify-between">
+              <div class="flex items-center justify-between">
+                <span data-i18n="ship.coverage_label" class="text-white/60 text-xs uppercase tracking-wider">Cobertura activa</span>
+                <span class="text-amber text-xs font-semibold flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber animate-pulse"></span> LIVE
+                </span>
+              </div>
+
+              <div class="space-y-4">
+                <div class="flex justify-between items-baseline">
+                  <div class="font-display text-white font-bold text-5xl lg:text-7xl">20+</div>
+                  <div data-i18n="ship.countries_suffix" class="text-amber font-semibold text-sm">países</div>
+                </div>
+                <div class="h-px bg-white/20"></div>
+                <div class="grid grid-cols-2 gap-y-2 gap-x-4 text-white/80 text-sm">
+                  <div class="flex items-center gap-2"><i data-lucide="flag" class="w-3 h-3 text-amber"></i> México</div>
+                  <div class="flex items-center gap-2"><i data-lucide="flag" class="w-3 h-3 text-amber"></i> Colombia</div>
+                  <div class="flex items-center gap-2"><i data-lucide="flag" class="w-3 h-3 text-amber"></i> Argentina</div>
+                  <div class="flex items-center gap-2"><i data-lucide="flag" class="w-3 h-3 text-amber"></i> Perú</div>
+                  <div class="flex items-center gap-2"><i data-lucide="flag" class="w-3 h-3 text-amber"></i> Chile</div>
+                  <div class="flex items-center gap-2"><i data-lucide="flag" class="w-3 h-3 text-amber"></i> Ecuador</div>
+                  <div class="flex items-center gap-2"><i data-lucide="flag" class="w-3 h-3 text-amber"></i> Venezuela</div>
+                  <div class="flex items-center gap-2"><i data-lucide="plus" class="w-3 h-3 text-amber"></i> <span data-i18n="ship.more_countries">13 más</span></div>
+                </div>
+              </div>
+
+              <div data-i18n="ship.avg_time" class="text-white/60 text-xs">Tiempo promedio: 2-7 días hábiles</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== CTA FINAL ========== -->
+  <section class="py-20 lg:py-28 bg-gradient-to-br from-amber to-naranja relative overflow-hidden">
+    <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(circle at 20% 50%, rgba(255,255,255,0.3) 0%, transparent 50%);"></div>
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative">
+      <h2 data-i18n="cta.h2" class="font-display font-bold text-3xl sm:text-4xl lg:text-6xl text-navy-deep leading-tight mb-6">
+        ¿Listo para equipar tu setup?
+      </h2>
+      <p data-i18n="cta.p" class="text-navy-deep/80 text-base lg:text-lg max-w-2xl mx-auto mb-10">
+        Escríbenos por WhatsApp o revisa el catálogo. Respondemos en minutos y enviamos a toda América.
+      </p>
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <a href="https://wa.me/14079434098" class="bg-navy hover:bg-navy-deep text-white font-semibold px-8 py-4 rounded-full inline-flex items-center justify-center gap-2 transition">
+          <i data-lucide="message-circle" class="w-5 h-5"></i> <span data-i18n="cta.wa">Escribir por WhatsApp</span>
+        </a>
+        <a href="mailto:sales@waremarkt.com" class="bg-white hover:bg-white/90 text-navy font-semibold px-8 py-4 rounded-full inline-flex items-center justify-center gap-2 transition">
+          <i data-lucide="mail" class="w-5 h-5"></i> sales@waremarkt.com
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== FOOTER ========== -->
+  <footer id="contacto" class="bg-navy-deep text-white py-16 lg:py-20">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-8 mb-12">
+
+        <div class="lg:col-span-1">
+          <div class="flex items-center gap-2.5 mb-4">
+            <div class="w-11 h-11 rounded-lg bg-white p-1 flex items-center justify-center">
+              <img src="assets/images/logo.svg" alt="Waremarkt" class="w-full h-full">
+            </div>
+            <div class="leading-tight">
+              <div class="font-display font-bold text-lg tracking-tight">WARE<span class="text-azul-light">MARKT</span></div>
+              <div data-i18n="footer.tagline" class="text-[9px] text-white/50 font-semibold tracking-[0.15em] uppercase">Soluciones logísticas</div>
+            </div>
+          </div>
+          <p data-i18n="footer.desc" class="text-white/60 text-sm leading-relaxed mb-5 max-w-xs">
+            Tecnología y logística inteligente para US y Latinoamérica.
+          </p>
+          <div class="flex gap-2">
+            <a href="https://facebook.com/waremarkt.store" aria-label="Facebook" class="w-9 h-9 rounded-full bg-white/5 hover:bg-azul flex items-center justify-center transition">
+              <i data-lucide="facebook" class="w-4 h-4"></i>
+            </a>
+            <a href="https://instagram.com/waremarkt.store" aria-label="Instagram" class="w-9 h-9 rounded-full bg-white/5 hover:bg-naranja flex items-center justify-center transition">
+              <i data-lucide="instagram" class="w-4 h-4"></i>
+            </a>
+            <a href="https://wa.me/14079434098" aria-label="WhatsApp" class="w-9 h-9 rounded-full bg-white/5 hover:bg-green-500 flex items-center justify-center transition">
+              <i data-lucide="message-circle" class="w-4 h-4"></i>
+            </a>
+          </div>
+        </div>
+
+        <div>
+          <div data-i18n="footer.shop_title" class="font-display font-bold text-sm uppercase tracking-wider mb-4 text-amber">Tienda</div>
+          <ul class="space-y-3 text-sm text-white/70">
+            <li><a href="#categorias" data-i18n="footer.shop_comp" class="hover:text-white transition">Computación</a></li>
+            <li><a href="#categorias" data-i18n="footer.shop_acc" class="hover:text-white transition">Accesorios</a></li>
+            <li><a href="#productos" data-i18n="footer.shop_offers" class="hover:text-white transition">Ofertas</a></li>
+            <li><a href="#productos" data-i18n="footer.shop_new" class="hover:text-white transition">Novedades</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <div data-i18n="footer.support_title" class="font-display font-bold text-sm uppercase tracking-wider mb-4 text-amber">Soporte</div>
+          <ul class="space-y-3 text-sm text-white/70">
+            <li><a href="#envios" data-i18n="footer.support_tracking" class="hover:text-white transition">Envíos y tracking</a></li>
+            <li><a href="#servicios" data-i18n="footer.support_payments" class="hover:text-white transition">Formas de pago</a></li>
+            <li><a href="#" data-i18n="footer.support_returns" class="hover:text-white transition">Devoluciones</a></li>
+            <li><a href="#" data-i18n="footer.support_faq" class="hover:text-white transition">Preguntas frecuentes</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <div data-i18n="footer.contact_title" class="font-display font-bold text-sm uppercase tracking-wider mb-4 text-amber">Contáctanos</div>
+          <ul class="space-y-3 text-sm text-white/70">
+            <li class="flex items-start gap-2">
+              <i data-lucide="mail" class="w-4 h-4 mt-0.5 text-amber flex-shrink-0"></i>
+              <a href="mailto:sales@waremarkt.com" class="hover:text-white">sales@waremarkt.com</a>
+            </li>
+            <li class="flex items-start gap-2">
+              <i data-lucide="phone" class="w-4 h-4 mt-0.5 text-amber flex-shrink-0"></i>
+              <a href="tel:+14079434098" class="hover:text-white">+1 (407) 943-4098</a>
+            </li>
+            <li class="flex items-start gap-2">
+              <i data-lucide="map-pin" class="w-4 h-4 mt-0.5 text-amber flex-shrink-0"></i>
+              <span>Florida, USA</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Newsletter -->
+      <div class="border-t border-white/10 pt-8 mb-8">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div class="max-w-md">
+            <div data-i18n="footer.newsletter_title" class="font-display font-bold text-lg mb-1">Ofertas al instante</div>
+            <p data-i18n="footer.newsletter_desc" class="text-white/60 text-sm">Suscríbete y recibe descuentos exclusivos antes que nadie.</p>
+          </div>
+          <form class="flex gap-2 w-full lg:w-auto">
+            <input type="email" placeholder="tu@email.com" data-i18n-placeholder="footer.newsletter_placeholder" required
+                   class="flex-1 lg:w-64 bg-white/5 border border-white/10 rounded-full px-5 py-3 text-sm text-white placeholder-white/40 focus:outline-none focus:border-amber">
+            <button type="submit" data-i18n="footer.newsletter_button" class="btn-primary text-navy-deep font-semibold px-6 py-3 rounded-full whitespace-nowrap text-sm">
+              Suscribirme
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-white/50">
+        <div data-i18n="footer.rights">© 2026 Waremarkt. Todos los derechos reservados.</div>
+        <div class="flex gap-6">
+          <a href="#" data-i18n="footer.privacy" class="hover:text-white transition">Privacidad</a>
+          <a href="#" data-i18n="footer.terms" class="hover:text-white transition">Términos</a>
+          <a href="#" data-i18n="footer.cookies" class="hover:text-white transition">Cookies</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ========== WHATSAPP FLOATING ========== -->
+  <a href="https://wa.me/14079434098" aria-label="WhatsApp"
+     class="fixed bottom-5 right-5 lg:bottom-8 lg:right-8 w-14 h-14 lg:w-16 lg:h-16 bg-green-500 hover:bg-green-600 rounded-full shadow-2xl flex items-center justify-center z-40 transition-transform hover:scale-110 group">
+    <i data-lucide="message-circle" class="w-6 h-6 lg:w-7 lg:h-7 text-white"></i>
+    <span class="absolute inset-0 rounded-full bg-green-500 animate-ping opacity-40"></span>
+  </a>
+
+  <script>
+    const { cart, fetchProducts, money } = WM;
+
+    async function renderFeatured() {
+      const grid = document.getElementById('featured-grid');
+      if (!grid) return;
+      try {
+        const products = await fetchProducts({ featured: '1', limit: 4 });
+        if (products.length === 0) return;
+        grid.innerHTML = products.map(p => `
+          <article class="card-hover bg-white rounded-2xl overflow-hidden border border-navy/10">
+            <a href="producto.html?slug=${p.slug}" class="relative aspect-square bg-gradient-to-br from-navy/5 to-azul/10 flex items-center justify-center overflow-hidden block">
+              <i data-lucide="${p.icon || 'package'}" class="w-20 h-20 text-navy/30"></i>
+              ${p.image_url ? `<img src="${p.image_url}" alt="${p.name}" class="absolute inset-0 w-full h-full object-cover" onerror="this.remove()">` : ''}
+              ${p.badge ? `<span class="absolute top-3 left-3 ${p.badge.startsWith('-') ? 'bg-naranja text-white' : 'bg-amber text-navy-deep'} text-xs font-bold px-2 py-1 rounded-md">${p.badge}</span>` : ''}
+            </a>
+            <div class="p-5">
+              <div class="text-xs text-carbon/60 uppercase tracking-wider font-medium mb-1">${p.brand || p.category}</div>
+              <h3 class="font-display font-bold text-navy text-base mb-2 leading-tight"><a href="producto.html?slug=${p.slug}">${p.name}</a></h3>
+              <div class="flex items-center gap-2 mb-4">
+                <span class="font-display font-bold text-lg text-navy">${money(p.price_cents)}</span>
+                ${p.compare_at_cents ? `<span class="text-sm text-carbon/50 line-through">${money(p.compare_at_cents)}</span>` : ''}
+              </div>
+              <button data-add="${p.slug}" class="w-full bg-navy hover:bg-navy-deep text-white font-semibold text-sm py-2.5 rounded-full transition flex items-center justify-center gap-2">
+                <i data-lucide="shopping-cart" class="w-4 h-4"></i> <span data-i18n="featured.add">Añadir</span>
+              </button>
+            </div>
+          </article>
+        `).join('');
+
+        grid.querySelectorAll('[data-add]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const slug = btn.dataset.add;
+            const p = products.find(x => x.slug === slug);
+            cart.add(p, 1);
+            btn.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i> ${WMi18n.t('featured.added')}`;
+            lucide.createIcons();
+            setTimeout(() => {
+              btn.innerHTML = `<i data-lucide="shopping-cart" class="w-4 h-4"></i> <span data-i18n="featured.add">${WMi18n.t('featured.add')}</span>`;
+              lucide.createIcons();
+            }, 1500);
+          });
+        });
+        lucide.createIcons();
+        if (window.WMi18n) WMi18n.apply();
+      } catch (err) {
+        console.warn('Backend offline, usando productos estáticos', err);
+      }
+    }
+
+    function refreshBadge() {
+      const b = document.getElementById('cart-badge');
+      if (!b) return;
+      const c = cart.count();
+      if (c > 0) { b.textContent = c; b.classList.remove('hidden'); } else b.classList.add('hidden');
+    }
+    window.addEventListener('cart:update', refreshBadge);
+
+    renderFeatured();
+    refreshBadge();
+    lucide.createIcons();
+  </script>
+</body>
+</html>

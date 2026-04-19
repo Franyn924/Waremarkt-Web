@@ -1,0 +1,13 @@
+{
+  "cleanUrls": false,
+  "directoryListing": false,
+  "rewrites": [
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/tienda", "destination": "/tienda.html" },
+    { "source": "/producto", "destination": "/producto.html" },
+    { "source": "/carrito", "destination": "/carrito.html" },
+    { "source": "/admin", "destination": "/admin.html" },
+    { "source": "/success", "destination": "/success.html" },
+    { "source": "/cancel", "destination": "/cancel.html" }
+  ]
+}

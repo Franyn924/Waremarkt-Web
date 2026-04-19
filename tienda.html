@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0A2E50">
+  <title>Tienda — Waremarkt</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="assets/js/cart.js"></script>
+  <script src="assets/js/i18n.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: { navy: {DEFAULT:'#0A2E50',deep:'#07213A',light:'#173F69'}, azul:{DEFAULT:'#007BFF',light:'#3E9BFF'}, amber:{DEFAULT:'#FFC107'}, naranja:{DEFAULT:'#FB8F1A'}, carbon:{DEFAULT:'#343A40'}},
+      fontFamily:{display:['"Space Grotesk"','system-ui','sans-serif'],body:['"Inter Tight"','system-ui','sans-serif']}
+    }}}
+  </script>
+  <style>
+    body{font-family:'Inter Tight',system-ui,sans-serif}
+    .btn-primary{background:linear-gradient(135deg,#FFC107 0%,#FB8F1A 100%);transition:transform .2s,box-shadow .2s}
+    .btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 24px -8px rgba(251,143,26,0.5)}
+    .card-hover{transition:transform .4s cubic-bezier(0.2,0.8,0.2,1),box-shadow .4s}
+    .card-hover:hover{transform:translateY(-6px);box-shadow:0 20px 40px -12px rgba(10,46,80,0.25)}
+    [x-cloak]{display:none!important}
+  </style>
+</head>
+<body class="bg-white text-carbon antialiased">
+
+  <!-- Header -->
+  <header class="sticky top-0 inset-x-0 z-50 bg-white/95 backdrop-blur-md shadow-sm" x-data="{ open: false }">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16 lg:h-20">
+        <a href="index.html" class="flex items-center gap-2.5">
+          <img src="assets/images/logo.svg" alt="Waremarkt" class="w-11 h-11 lg:w-12 lg:h-12">
+          <div class="leading-tight">
+            <div class="font-display font-bold text-navy text-lg lg:text-xl tracking-tight">WARE<span class="text-azul">MARKT</span></div>
+            <div data-i18n="header.tagline" class="text-[9px] lg:text-[10px] text-carbon/70 font-semibold tracking-[0.15em] uppercase hidden sm:block">Soluciones logísticas inteligentes</div>
+          </div>
+        </a>
+        <nav class="hidden lg:flex items-center gap-8">
+          <a href="index.html" data-i18n="nav.home" class="text-sm font-medium text-carbon hover:text-azul transition">Inicio</a>
+          <a href="tienda.html" data-i18n="nav.shop" class="text-sm font-semibold text-azul">Tienda</a>
+          <a href="index.html#servicios" data-i18n="nav.services" class="text-sm font-medium text-carbon hover:text-azul transition">Servicios</a>
+          <a href="index.html#contacto" data-i18n="nav.contact" class="text-sm font-medium text-carbon hover:text-azul transition">Contacto</a>
+        </nav>
+        <div class="flex items-center gap-2">
+          <button data-lang-switch onclick="WMi18n.toggle()" class="text-xs font-bold tracking-wider text-navy hover:text-azul border border-navy/20 hover:border-azul rounded-full w-10 h-10 flex items-center justify-center transition" title="Switch language">EN</button>
+          <a href="carrito.html" data-i18n-aria="nav.cart_aria" class="relative w-11 h-11 rounded-full bg-navy/5 hover:bg-navy/10 flex items-center justify-center transition" aria-label="Carrito">
+            <i data-lucide="shopping-cart" class="w-5 h-5 text-navy"></i>
+            <span id="cart-badge" class="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-naranja text-white text-[11px] font-bold rounded-full flex items-center justify-center hidden">0</span>
+          </a>
+          <button @click="open=!open" data-i18n-aria="nav.menu_aria" class="lg:hidden w-10 h-10 flex items-center justify-center rounded-lg hover:bg-navy/5" aria-label="Menú">
+            <i data-lucide="menu" x-show="!open" class="w-6 h-6 text-navy"></i>
+            <i data-lucide="x" x-show="open" x-cloak class="w-6 h-6 text-navy"></i>
+          </button>
+        </div>
+      </div>
+      <div x-show="open" x-cloak x-transition class="lg:hidden border-t border-navy/10 py-3">
+        <a href="index.html" data-i18n="nav.home" class="block px-4 py-3 text-carbon font-medium hover:bg-navy/5 rounded-lg">Inicio</a>
+        <a href="tienda.html" data-i18n="nav.shop" class="block px-4 py-3 text-azul font-semibold bg-azul/5 rounded-lg">Tienda</a>
+        <a href="index.html#servicios" data-i18n="nav.services" class="block px-4 py-3 text-carbon font-medium hover:bg-navy/5 rounded-lg">Servicios</a>
+        <a href="index.html#contacto" data-i18n="nav.contact" class="block px-4 py-3 text-carbon font-medium hover:bg-navy/5 rounded-lg">Contacto</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="bg-gradient-to-br from-navy to-navy-light text-white py-12 lg:py-16">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <nav class="text-xs text-white/60 mb-3"><a href="index.html" data-i18n="nav.breadcrumb_home" class="hover:text-amber">Inicio</a> / <span data-i18n="nav.breadcrumb_shop" class="text-amber">Tienda</span></nav>
+      <h1 data-i18n="shop.h1" class="font-display font-bold text-3xl sm:text-4xl lg:text-5xl mb-3">Catálogo completo</h1>
+      <p data-i18n="shop.subtitle" class="text-white/70 max-w-xl">Computación y accesorios con envíos a US y LatAm.</p>
+    </div>
+  </section>
+
+  <!-- Filtros + Grid -->
+  <section class="py-10 lg:py-14">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" x-data="tiendaApp()" x-init="init(); load()">
+
+      <div class="flex flex-wrap items-center gap-2 mb-8">
+        <button @click="setCat('')" data-i18n="shop.all" :class="cat===''?'bg-navy text-white':'bg-navy/5 text-navy hover:bg-navy/10'" class="px-5 py-2 rounded-full text-sm font-semibold transition">Todos</button>
+        <button @click="setCat('computacion')" data-i18n="cats.computacion" :class="cat==='computacion'?'bg-navy text-white':'bg-navy/5 text-navy hover:bg-navy/10'" class="px-5 py-2 rounded-full text-sm font-semibold transition">Computación</button>
+        <button @click="setCat('accesorios')" data-i18n="cats.accesorios" :class="cat==='accesorios'?'bg-navy text-white':'bg-navy/5 text-navy hover:bg-navy/10'" class="px-5 py-2 rounded-full text-sm font-semibold transition">Accesorios</button>
+        <div class="ml-auto text-sm text-carbon/60" x-text="`${products.length} ${productsLabel}`"></div>
+      </div>
+
+      <div x-show="loading" data-i18n="shop.loading" class="text-center py-20 text-carbon/60">Cargando productos...</div>
+      <div x-show="!loading && products.length === 0" data-i18n="shop.empty" class="text-center py-20 text-carbon/60">No hay productos en esta categoría.</div>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 lg:gap-6">
+        <template x-for="p in products" :key="p.id">
+          <article class="card-hover bg-white rounded-2xl overflow-hidden border border-navy/10 flex flex-col">
+            <a :href="`producto.html?slug=${p.slug}`" class="relative aspect-square bg-gradient-to-br from-navy/5 to-azul/10 flex items-center justify-center overflow-hidden">
+              <i :data-lucide="p.icon || 'package'" class="w-20 h-20 text-navy/30"></i>
+              <img x-show="p.image_url" :src="p.image_url" :alt="p.name" class="absolute inset-0 w-full h-full object-cover" @error="p.image_url = ''">
+              <span x-show="p.badge" :class="p.badge && p.badge.startsWith('-')?'bg-naranja text-white':'bg-amber text-navy-deep'" class="absolute top-3 left-3 text-xs font-bold px-2 py-1 rounded-md" x-text="p.badge"></span>
+            </a>
+            <div class="p-5 flex flex-col flex-1">
+              <div class="text-xs text-carbon/60 uppercase tracking-wider font-medium mb-1" x-text="p.brand || p.category"></div>
+              <h3 class="font-display font-bold text-navy text-base mb-2 leading-tight"><a :href="`producto.html?slug=${p.slug}`" x-text="p.name"></a></h3>
+              <div class="flex items-center gap-2 mb-4 mt-auto">
+                <span class="font-display font-bold text-lg text-navy" x-text="money(p.price_cents)"></span>
+                <span x-show="p.compare_at_cents" class="text-sm text-carbon/50 line-through" x-text="money(p.compare_at_cents)"></span>
+              </div>
+              <button @click="addToCart(p)" class="w-full bg-navy hover:bg-navy-deep text-white font-semibold text-sm py-2.5 rounded-full transition flex items-center justify-center gap-2">
+                <i data-lucide="shopping-cart" class="w-4 h-4"></i> <span data-i18n="shop.add_cart">Añadir al carrito</span>
+              </button>
+            </div>
+          </article>
+        </template>
+      </div>
+    </div>
+  </section>
+
+  <!-- Toast -->
+  <div x-data="{show:false,msg:''}" @cart-toast.window="msg=$event.detail;show=true;setTimeout(()=>show=false,2200)"
+       x-show="show" x-cloak x-transition
+       class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-navy text-white px-5 py-3 rounded-full shadow-xl z-50 text-sm font-medium flex items-center gap-2">
+    <i data-lucide="check-circle" class="w-4 h-4 text-amber"></i>
+    <span x-text="msg"></span>
+  </div>
+
+  <script>
+    window.money = WM.money;
+    window.tiendaApp = () => ({
+      products: [], loading: true, cat: '',
+      productsLabel: WMi18n.t('shop.products_label'),
+      init() {
+        window.addEventListener('i18n:change', () => {
+          this.productsLabel = WMi18n.t('shop.products_label');
+          this.$nextTick(() => WMi18n.apply());
+        });
+      },
+      async load() {
+        this.loading = true;
+        const params = new URLSearchParams(location.search);
+        this.cat = params.get('cat') || '';
+        const q = this.cat ? { category: this.cat } : {};
+        this.products = await WM.fetchProducts(q);
+        this.loading = false;
+        this.$nextTick(() => { lucide.createIcons(); WMi18n.apply(); });
+      },
+      setCat(c) {
+        this.cat = c;
+        history.replaceState({}, '', c ? `?cat=${c}` : location.pathname);
+        this.load();
+      },
+      addToCart(p) {
+        WM.cart.add(p, 1);
+        window.dispatchEvent(new CustomEvent('cart-toast', { detail: `${p.name} ${WMi18n.t('shop.toast_added')}` }));
+      }
+    });
+
+    function refreshBadge() {
+      const b = document.getElementById('cart-badge');
+      const c = WM.cart.count();
+      if (c > 0) { b.textContent = c; b.classList.remove('hidden'); }
+      else b.classList.add('hidden');
+    }
+    window.addEventListener('cart:update', refreshBadge);
+    window.addEventListener('DOMContentLoaded', () => { refreshBadge(); lucide.createIcons(); });
+  </script>
+</body>
+</html>

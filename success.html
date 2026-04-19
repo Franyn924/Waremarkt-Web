@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pago confirmado — Waremarkt</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="assets/js/i18n.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <script>
+    tailwind.config={theme:{extend:{colors:{navy:{DEFAULT:'#0A2E50',deep:'#07213A'},azul:'#007BFF',amber:'#FFC107',naranja:'#FB8F1A',carbon:'#343A40'},fontFamily:{display:['"Space Grotesk"','system-ui'],body:['"Inter Tight"','system-ui']}}}}
+  </script>
+  <style>body{font-family:'Inter Tight',system-ui}.btn-primary{background:linear-gradient(135deg,#FFC107,#FB8F1A)}</style>
+</head>
+<body class="bg-gradient-to-br from-amber/10 via-white to-azul/5 min-h-screen flex items-center justify-center p-4">
+  <div class="max-w-lg w-full bg-white rounded-3xl shadow-xl p-8 lg:p-12 text-center">
+    <div class="w-20 h-20 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-6">
+      <i data-lucide="check" class="w-10 h-10 text-green-600"></i>
+    </div>
+    <h1 data-i18n="success.title" class="font-display font-bold text-3xl lg:text-4xl text-navy mb-3">¡Pago confirmado!</h1>
+    <p data-i18n="success.desc" class="text-carbon/70 mb-8">Recibirás un email con los detalles de tu orden y el tracking cuando tu pedido salga del hub de Florida.</p>
+    <a href="tienda.html" data-i18n="success.continue" class="btn-primary inline-block text-navy-deep font-bold px-8 py-3.5 rounded-full hover:-translate-y-0.5 transition">Seguir comprando</a>
+    <p class="mt-6 text-sm text-carbon/50"><span data-i18n="success.help">¿Necesitas ayuda? Escríbenos al</span> <a href="https://wa.me/14079434098" class="text-azul font-semibold">WhatsApp</a></p>
+    <button data-lang-switch onclick="WMi18n.toggle()" class="mt-6 text-xs font-bold tracking-wider text-navy/60 hover:text-azul" title="Switch language">EN</button>
+  </div>
+  <script>
+    lucide.createIcons();
+    localStorage.removeItem('waremarkt_cart_v1');
+  </script>
+</body>
+</html>

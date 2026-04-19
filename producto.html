@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0A2E50">
+  <title>Producto — Waremarkt</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="assets/js/cart.js"></script>
+  <script src="assets/js/i18n.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: { navy:{DEFAULT:'#0A2E50',deep:'#07213A',light:'#173F69'}, azul:{DEFAULT:'#007BFF',light:'#3E9BFF'}, amber:{DEFAULT:'#FFC107'}, naranja:{DEFAULT:'#FB8F1A'}, carbon:{DEFAULT:'#343A40'}},
+      fontFamily:{display:['"Space Grotesk"','system-ui','sans-serif'],body:['"Inter Tight"','system-ui','sans-serif']}
+    }}}
+  </script>
+  <style>
+    body{font-family:'Inter Tight',system-ui,sans-serif}
+    .btn-primary{background:linear-gradient(135deg,#FFC107 0%,#FB8F1A 100%);transition:transform .2s,box-shadow .2s}
+    .btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 24px -8px rgba(251,143,26,0.5)}
+    [x-cloak]{display:none!important}
+  </style>
+</head>
+<body class="bg-white text-carbon antialiased">
+
+  <header class="sticky top-0 inset-x-0 z-50 bg-white/95 backdrop-blur-md shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16 lg:h-20">
+      <a href="index.html" class="flex items-center gap-2.5">
+        <img src="assets/images/logo.svg" alt="Waremarkt" class="w-11 h-11 lg:w-12 lg:h-12">
+        <div class="leading-tight">
+          <div class="font-display font-bold text-navy text-lg lg:text-xl tracking-tight">WARE<span class="text-azul">MARKT</span></div>
+          <div data-i18n="header.tagline" class="text-[9px] lg:text-[10px] text-carbon/70 font-semibold tracking-[0.15em] uppercase hidden sm:block">Soluciones logísticas inteligentes</div>
+        </div>
+      </a>
+      <div class="flex items-center gap-3">
+        <button data-lang-switch onclick="WMi18n.toggle()" class="text-xs font-bold tracking-wider text-navy hover:text-azul border border-navy/20 hover:border-azul rounded-full w-10 h-10 flex items-center justify-center transition" title="Switch language">EN</button>
+        <a href="tienda.html" data-i18n="nav.shop" class="hidden sm:block text-sm font-medium text-carbon hover:text-azul transition">Tienda</a>
+        <a href="carrito.html" data-i18n-aria="nav.cart_aria" class="relative w-11 h-11 rounded-full bg-navy/5 hover:bg-navy/10 flex items-center justify-center" aria-label="Carrito">
+          <i data-lucide="shopping-cart" class="w-5 h-5 text-navy"></i>
+          <span id="cart-badge" class="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-naranja text-white text-[11px] font-bold rounded-full flex items-center justify-center hidden">0</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-14" x-data="productApp()" x-init="init(); load()">
+    <nav class="text-xs text-carbon/60 mb-6">
+      <a href="index.html" data-i18n="nav.breadcrumb_home" class="hover:text-azul">Inicio</a> /
+      <a href="tienda.html" data-i18n="nav.breadcrumb_shop" class="hover:text-azul">Tienda</a> /
+      <span class="text-navy font-medium" x-text="product?.name || '...'"></span>
+    </nav>
+
+    <div x-show="loading" data-i18n="prod.loading" class="text-center py-20 text-carbon/60">Cargando...</div>
+    <div x-show="notFound" class="text-center py-20">
+      <h2 data-i18n="prod.not_found" class="font-display font-bold text-2xl text-navy mb-2">Producto no encontrado</h2>
+      <a href="tienda.html" data-i18n="prod.back" class="text-azul hover:underline">Volver al catálogo</a>
+    </div>
+
+    <div x-show="product && !loading" x-cloak class="grid lg:grid-cols-2 gap-10 lg:gap-16">
+      <div class="aspect-square rounded-3xl bg-gradient-to-br from-navy/5 to-azul/10 flex items-center justify-center relative overflow-hidden">
+        <template x-if="product">
+          <i :data-lucide="product.icon || 'package'" class="w-48 h-48 text-navy/30"></i>
+        </template>
+        <img x-show="product?.image_url" :src="product?.image_url" :alt="product?.name" class="absolute inset-0 w-full h-full object-cover" @error="product.image_url = ''">
+        <span x-show="product?.badge" :class="product?.badge?.startsWith('-')?'bg-naranja text-white':'bg-amber text-navy-deep'" class="absolute top-5 left-5 text-sm font-bold px-3 py-1.5 rounded-md" x-text="product?.badge"></span>
+      </div>
+
+      <div>
+        <div class="text-xs text-carbon/60 uppercase tracking-wider font-medium mb-2" x-text="product?.brand || product?.category"></div>
+        <h1 class="font-display font-bold text-3xl lg:text-5xl text-navy leading-tight mb-4" x-text="product?.name"></h1>
+
+        <div class="flex items-baseline gap-3 mb-6">
+          <span class="font-display font-bold text-4xl text-navy" x-text="money(product?.price_cents)"></span>
+          <span x-show="product?.compare_at_cents" class="text-xl text-carbon/50 line-through" x-text="money(product?.compare_at_cents)"></span>
+        </div>
+
+        <p class="text-carbon/80 leading-relaxed mb-8" x-text="product?.description"></p>
+
+        <div class="flex items-center gap-2 mb-8" :class="product?.stock > 0 ? 'text-green-600' : 'text-red-600'">
+          <i data-lucide="check-circle" class="w-5 h-5" x-show="product?.stock > 0"></i>
+          <i data-lucide="x-circle" class="w-5 h-5" x-show="product?.stock === 0"></i>
+          <span class="font-semibold text-sm" x-text="product?.stock > 0 ? `${WMi18n.t('prod.in_stock')} — ${product.stock} ${WMi18n.t('prod.available')}` : WMi18n.t('prod.out_of_stock')"></span>
+        </div>
+
+        <div class="flex items-center gap-4 mb-6">
+          <div class="flex items-center border-2 border-navy/10 rounded-full">
+            <button @click="qty = Math.max(1, qty-1)" class="w-11 h-11 flex items-center justify-center hover:bg-navy/5 rounded-l-full"><i data-lucide="minus" class="w-4 h-4"></i></button>
+            <span class="w-12 text-center font-semibold" x-text="qty"></span>
+            <button @click="qty = Math.min(product?.stock || 1, qty+1)" class="w-11 h-11 flex items-center justify-center hover:bg-navy/5 rounded-r-full"><i data-lucide="plus" class="w-4 h-4"></i></button>
+          </div>
+          <button @click="addToCart()" :disabled="!product || product.stock === 0" class="flex-1 btn-primary text-navy-deep font-bold py-4 rounded-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            <i data-lucide="shopping-cart" class="w-5 h-5"></i> <span data-i18n="prod.add_cart">Añadir al carrito</span>
+          </button>
+        </div>
+
+        <a :href="waLink()" target="_blank" class="block w-full border-2 border-navy/20 hover:border-navy text-navy font-semibold py-3.5 rounded-full text-center transition">
+          <i data-lucide="message-circle" class="inline w-4 h-4 mr-1 -mt-0.5"></i> <span data-i18n="prod.ask_wa">Consultar por WhatsApp</span>
+        </a>
+
+        <div class="mt-10 pt-8 border-t border-navy/10 grid grid-cols-2 gap-5 text-sm">
+          <div class="flex items-start gap-3">
+            <i data-lucide="truck" class="w-5 h-5 text-amber mt-0.5"></i>
+            <div><div data-i18n="prod.ship_title" class="font-semibold text-navy">Envío US + LatAm</div><div data-i18n="prod.ship_desc" class="text-carbon/60 text-xs">2-7 días hábiles</div></div>
+          </div>
+          <div class="flex items-start gap-3">
+            <i data-lucide="shield-check" class="w-5 h-5 text-amber mt-0.5"></i>
+            <div><div data-i18n="prod.secure_title" class="font-semibold text-navy">Pago seguro</div><div data-i18n="prod.secure_desc" class="text-carbon/60 text-xs">Stripe SSL</div></div>
+          </div>
+          <div class="flex items-start gap-3">
+            <i data-lucide="rotate-ccw" class="w-5 h-5 text-amber mt-0.5"></i>
+            <div><div data-i18n="prod.return_title" class="font-semibold text-navy">Devolución</div><div data-i18n="prod.return_desc" class="text-carbon/60 text-xs">30 días</div></div>
+          </div>
+          <div class="flex items-start gap-3">
+            <i data-lucide="package-check" class="w-5 h-5 text-amber mt-0.5"></i>
+            <div><div data-i18n="prod.track_title" class="font-semibold text-navy">Tracking</div><div data-i18n="prod.track_desc" class="text-carbon/60 text-xs">En tiempo real</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div x-data="{show:false,msg:''}" @cart-toast.window="msg=$event.detail;show=true;setTimeout(()=>show=false,2200)"
+       x-show="show" x-cloak x-transition
+       class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-navy text-white px-5 py-3 rounded-full shadow-xl z-50 text-sm font-medium flex items-center gap-2">
+    <i data-lucide="check-circle" class="w-4 h-4 text-amber"></i>
+    <span x-text="msg"></span>
+  </div>
+
+  <script>
+    window.money = WM.money;
+    window.productApp = () => ({
+      product: null, qty: 1, loading: true, notFound: false,
+      init() {
+        window.addEventListener('i18n:change', () => this.$nextTick(() => WMi18n.apply()));
+      },
+      async load() {
+        const slug = new URLSearchParams(location.search).get('slug');
+        if (!slug) { this.notFound = true; this.loading = false; return; }
+        this.product = await WM.fetchProduct(slug);
+        this.loading = false;
+        if (!this.product) this.notFound = true;
+        this.$nextTick(() => { lucide.createIcons(); WMi18n.apply(); });
+      },
+      addToCart() {
+        if (!this.product) return;
+        WM.cart.add(this.product, this.qty);
+        window.dispatchEvent(new CustomEvent('cart-toast', { detail: `${this.qty}× ${this.product.name} ${WMi18n.t('shop.toast_added')}` }));
+      },
+      waLink() {
+        if (!this.product) return '#';
+        const msg = `Hola! Me interesa: ${this.product.name} (${WM.money(this.product.price_cents)})`;
+        return `https://wa.me/14079434098?text=${encodeURIComponent(msg)}`;
+      }
+    });
+
+    function refreshBadge() {
+      const b = document.getElementById('cart-badge');
+      const c = WM.cart.count();
+      if (c > 0) { b.textContent = c; b.classList.remove('hidden'); } else b.classList.add('hidden');
+    }
+    window.addEventListener('cart:update', refreshBadge);
+    window.addEventListener('DOMContentLoaded', () => { refreshBadge(); lucide.createIcons(); });
+  </script>
+</body>
+</html>
