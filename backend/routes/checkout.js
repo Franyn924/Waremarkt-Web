@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import Stripe from 'stripe';
-import { db, getSetting } from '../db/schema.js';
+import { pool, getSetting } from '../db/schema.js';
 
 export const checkoutRouter = Router();
 
@@ -22,24 +22,24 @@ checkoutRouter.post('/session', async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Carrito vacío' });
     }
 
-    const currency = (getSetting('currency', 'usd') || 'usd').toLowerCase();
-    const taxEnabled = getSetting('tax_enabled', '0') === '1';
-    const taxBehavior = getSetting('tax_behavior', 'exclusive') === 'inclusive' ? 'inclusive' : 'exclusive';
-    const shippingFlat = Math.max(0, Number(getSetting('shipping_flat_cents', '0')) || 0);
-    const successPath = getSetting('checkout_success_url', '/success.html') || '/success.html';
-    const cancelPath = getSetting('checkout_cancel_url', '/cancel.html') || '/cancel.html';
+    const currency = ((await getSetting('currency', 'usd')) || 'usd').toLowerCase();
+    const taxEnabled = (await getSetting('tax_enabled', '0')) === '1';
+    const taxBehavior = (await getSetting('tax_behavior', 'exclusive')) === 'inclusive' ? 'inclusive' : 'exclusive';
+    const shippingFlat = Math.max(0, Number(await getSetting('shipping_flat_cents', '0')) || 0);
+    const successPath = (await getSetting('checkout_success_url', '/success.html')) || '/success.html';
+    const cancelPath = (await getSetting('checkout_cancel_url', '/cancel.html')) || '/cancel.html';
 
-    const getProduct = db.prepare('SELECT * FROM products WHERE slug = ? AND active = 1');
     const line_items = [];
     const orderItems = [];
 
     for (const { slug, quantity } of items) {
-      const p = getProduct.get(slug);
+      const [rows] = await pool.execute('SELECT * FROM products WHERE slug = ? AND active = 1', [slug]);
+      const p = rows[0];
       if (!p) return res.status(400).json({ success: false, error: `Producto no encontrado: ${slug}` });
       if (p.stock < quantity) return res.status(400).json({ success: false, error: `Stock insuficiente: ${p.name}` });
 
       const product_data = { name: p.name, description: p.brand ? `${p.brand} · ${p.category}` : p.category };
-      if (taxEnabled) product_data.tax_code = 'txcd_99999999'; // General - Tangible Goods
+      if (taxEnabled) product_data.tax_code = 'txcd_99999999';
       const price_data = { currency, product_data, unit_amount: p.price_cents };
       if (taxEnabled) price_data.tax_behavior = taxBehavior;
 
@@ -71,7 +71,7 @@ checkoutRouter.post('/session', async (req, res, next) => {
           fixed_amount: { amount: shippingFlat, currency },
           display_name: 'Envío estándar',
           tax_behavior: taxEnabled ? taxBehavior : undefined,
-          tax_code: taxEnabled ? 'txcd_92010001' : undefined // Shipping
+          tax_code: taxEnabled ? 'txcd_92010001' : undefined
         }
       }];
     }
@@ -79,10 +79,11 @@ checkoutRouter.post('/session', async (req, res, next) => {
     const session = await stripe.checkout.sessions.create(sessionPayload);
 
     const total = orderItems.reduce((s, i) => s + i.price_cents * i.quantity, 0);
-    db.prepare(`
-      INSERT INTO orders (stripe_session_id, amount_total_cents, status, items_json)
-      VALUES (?, ?, 'pending', ?)
-    `).run(session.id, total, JSON.stringify(orderItems));
+    await pool.execute(
+      `INSERT INTO orders (stripe_session_id, amount_total_cents, currency, status, items_json)
+       VALUES (?, ?, ?, 'pending', ?)`,
+      [session.id, total, currency, JSON.stringify(orderItems)]
+    );
 
     res.json({ success: true, data: { id: session.id, url: session.url } });
   } catch (err) { next(err); }
@@ -92,6 +93,13 @@ checkoutRouter.get('/session/:id', async (req, res, next) => {
   try {
     if (!stripe) return res.status(503).json({ success: false, error: 'Stripe no configurado' });
     const session = await stripe.checkout.sessions.retrieve(req.params.id);
-    res.json({ success: true, data: { status: session.status, payment_status: session.payment_status, customer_email: session.customer_details?.email } });
+    res.json({
+      success: true,
+      data: {
+        status: session.status,
+        payment_status: session.payment_status,
+        customer_email: session.customer_details?.email
+      }
+    });
   } catch (err) { next(err); }
 });

@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { initDb } from './db/schema.js';
 import { productsRouter } from './routes/products.js';
 import { categoriesRouter } from './routes/categories.js';
 import { settingsRouter } from './routes/settings.js';
@@ -55,8 +56,18 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`\n  Waremarkt API · http://localhost:${PORT}`);
-  console.log(`  Health         · http://localhost:${PORT}/api/health`);
-  console.log(`  Products       · http://localhost:${PORT}/api/products\n`);
-});
+(async () => {
+  try {
+    await initDb();
+    console.log('  DB             · MySQL conectado y esquema listo');
+  } catch (e) {
+    console.error('[fatal] initDb falló:', e.message);
+    process.exit(1);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`\n  Waremarkt API · http://localhost:${PORT}`);
+    console.log(`  Health         · http://localhost:${PORT}/api/health`);
+    console.log(`  Products       · http://localhost:${PORT}/api/products\n`);
+  });
+})();

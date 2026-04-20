@@ -3,7 +3,7 @@ import multer from 'multer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { db } from '../db/schema.js';
+import { pool } from '../db/schema.js';
 import { requireAdmin } from '../middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,34 +35,42 @@ adminRouter.get('/me', (req, res) => {
 });
 
 // Stats para dashboard
-adminRouter.get('/stats', (req, res) => {
-  const products = db.prepare('SELECT COUNT(*) as c FROM products WHERE active = 1').get().c;
-  const lowStock = db.prepare('SELECT COUNT(*) as c FROM products WHERE active = 1 AND stock <= 5').get().c;
-  const orders = db.prepare('SELECT COUNT(*) as c, COALESCE(SUM(amount_total_cents),0) as total FROM orders WHERE status = ?').get('paid');
-  const pending = db.prepare('SELECT COUNT(*) as c FROM orders WHERE status = ?').get('pending').c;
-  res.json({
-    success: true,
-    data: {
-      products,
-      lowStock,
-      paidOrders: orders.c,
-      revenueCents: orders.total,
-      pendingOrders: pending
-    }
-  });
+adminRouter.get('/stats', async (req, res, next) => {
+  try {
+    const [[{ products }]] = await pool.query('SELECT COUNT(*) AS products FROM products WHERE active = 1');
+    const [[{ lowStock }]] = await pool.query('SELECT COUNT(*) AS lowStock FROM products WHERE active = 1 AND stock <= 5');
+    const [[paidAgg]] = await pool.query(
+      `SELECT COUNT(*) AS c, COALESCE(SUM(amount_total_cents), 0) AS total FROM orders WHERE status = 'paid'`
+    );
+    const [[{ pending }]] = await pool.query(`SELECT COUNT(*) AS pending FROM orders WHERE status = 'pending'`);
+    res.json({
+      success: true,
+      data: {
+        products,
+        lowStock,
+        paidOrders: paidAgg.c,
+        revenueCents: Number(paidAgg.total),
+        pendingOrders: pending
+      }
+    });
+  } catch (err) { next(err); }
 });
 
 // ==== PRODUCTS CRUD ====
 
-adminRouter.get('/products', (req, res) => {
-  const rows = db.prepare('SELECT * FROM products ORDER BY created_at DESC').all();
-  res.json({ success: true, data: rows });
+adminRouter.get('/products', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM products ORDER BY created_at DESC');
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
 });
 
-adminRouter.get('/products/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
-  if (!row) return res.status(404).json({ success: false, error: 'No encontrado' });
-  res.json({ success: true, data: row });
+adminRouter.get('/products/:id', async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute('SELECT * FROM products WHERE id = ?', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'No encontrado' });
+    res.json({ success: true, data: rows[0] });
+  } catch (err) { next(err); }
 });
 
 function slugify(s) {
@@ -71,12 +79,12 @@ function slugify(s) {
     .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 80);
 }
 
-function sanitize(body) {
+async function sanitize(body) {
   const name = String(body.name || '').trim();
   const category = String(body.category || '').trim();
   if (!name) throw Object.assign(new Error('Nombre requerido'), { statusCode: 400 });
-  const catRow = db.prepare('SELECT slug FROM categories WHERE slug = ? AND active = 1').get(category);
-  if (!catRow) {
+  const [catRows] = await pool.execute('SELECT slug FROM categories WHERE slug = ? AND active = 1', [category]);
+  if (catRows.length === 0) {
     throw Object.assign(new Error('Categoría inválida o inactiva'), { statusCode: 400 });
   }
   const price = Number(body.price_cents);
@@ -92,7 +100,6 @@ function sanitize(body) {
     })) : [];
   const firstImage = media.find(m => m.type === 'image');
   const legacyImage = String(body.image_url || '').trim();
-  // Si hay media, la portada = primera imagen. Si no, usa image_url legacy (para migrar sin perder datos).
   const image_url = firstImage ? firstImage.url : (legacyImage || null);
   return {
     slug: body.slug ? slugify(body.slug) : slugify(name),
@@ -112,55 +119,58 @@ function sanitize(body) {
   };
 }
 
-adminRouter.post('/products', (req, res, next) => {
+adminRouter.post('/products', async (req, res, next) => {
   try {
-    const p = sanitize(req.body);
-    const info = db.prepare(`
-      INSERT INTO products (slug, name, category, brand, description, price_cents, compare_at_cents, stock, icon, image_url, media_json, badge, featured, active)
-      VALUES (@slug, @name, @category, @brand, @description, @price_cents, @compare_at_cents, @stock, @icon, @image_url, @media_json, @badge, @featured, @active)
-    `).run(p);
-    const row = db.prepare('SELECT * FROM products WHERE id = ?').get(info.lastInsertRowid);
-    res.status(201).json({ success: true, data: row });
+    const p = await sanitize(req.body);
+    const [result] = await pool.execute(
+      `INSERT INTO products (slug, name, category, brand, description, price_cents, compare_at_cents, stock, icon, image_url, media_json, badge, featured, active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [p.slug, p.name, p.category, p.brand, p.description, p.price_cents, p.compare_at_cents, p.stock, p.icon, p.image_url, p.media_json, p.badge, p.featured, p.active]
+    );
+    const [rows] = await pool.execute('SELECT * FROM products WHERE id = ?', [result.insertId]);
+    res.status(201).json({ success: true, data: rows[0] });
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) {
+    if (e.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ success: false, error: 'Ya existe un producto con ese slug' });
     }
     next(e);
   }
 });
 
-adminRouter.put('/products/:id', (req, res, next) => {
+adminRouter.put('/products/:id', async (req, res, next) => {
   try {
-    const exists = db.prepare('SELECT id FROM products WHERE id = ?').get(req.params.id);
-    if (!exists) return res.status(404).json({ success: false, error: 'No encontrado' });
-    const p = sanitize(req.body);
-    db.prepare(`
-      UPDATE products SET
-        slug=@slug, name=@name, category=@category, brand=@brand, description=@description,
-        price_cents=@price_cents, compare_at_cents=@compare_at_cents, stock=@stock,
-        icon=@icon, image_url=@image_url, media_json=@media_json, badge=@badge, featured=@featured, active=@active
-      WHERE id=@id
-    `).run({ ...p, id: Number(req.params.id) });
-    const row = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
-    res.json({ success: true, data: row });
+    const [exists] = await pool.execute('SELECT id FROM products WHERE id = ?', [req.params.id]);
+    if (exists.length === 0) return res.status(404).json({ success: false, error: 'No encontrado' });
+    const p = await sanitize(req.body);
+    await pool.execute(
+      `UPDATE products SET
+         slug=?, name=?, category=?, brand=?, description=?,
+         price_cents=?, compare_at_cents=?, stock=?,
+         icon=?, image_url=?, media_json=?, badge=?, featured=?, active=?
+       WHERE id=?`,
+      [p.slug, p.name, p.category, p.brand, p.description, p.price_cents, p.compare_at_cents, p.stock, p.icon, p.image_url, p.media_json, p.badge, p.featured, p.active, Number(req.params.id)]
+    );
+    const [rows] = await pool.execute('SELECT * FROM products WHERE id = ?', [req.params.id]);
+    res.json({ success: true, data: rows[0] });
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) {
+    if (e.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ success: false, error: 'Ya existe un producto con ese slug' });
     }
     next(e);
   }
 });
 
-// Soft-delete: active = 0
-adminRouter.delete('/products/:id', (req, res) => {
-  const info = db.prepare('UPDATE products SET active = 0 WHERE id = ?').run(req.params.id);
-  if (info.changes === 0) return res.status(404).json({ success: false, error: 'No encontrado' });
-  res.json({ success: true });
+adminRouter.delete('/products/:id', async (req, res, next) => {
+  try {
+    const [result] = await pool.execute('UPDATE products SET active = 0 WHERE id = ?', [req.params.id]);
+    if (result.affectedRows === 0) return res.status(404).json({ success: false, error: 'No encontrado' });
+    res.json({ success: true });
+  } catch (err) { next(err); }
 });
 
 // ==== MEDIA UPLOAD ====
 
-adminRouter.post('/upload', (req, res, next) => {
+adminRouter.post('/upload', (req, res) => {
   upload.single('file')(req, res, (err) => {
     if (err) return res.status(400).json({ success: false, error: err.message });
     if (!req.file) return res.status(400).json({ success: false, error: 'Archivo requerido' });
@@ -221,9 +231,11 @@ function guessCategory(it) {
 
 // ==== CATEGORIES CRUD ====
 
-adminRouter.get('/categories', (req, res) => {
-  const rows = db.prepare('SELECT * FROM categories ORDER BY sort_order ASC, name_es ASC').all();
-  res.json({ success: true, data: rows });
+adminRouter.get('/categories', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM categories ORDER BY sort_order ASC, name_es ASC');
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
 });
 
 function sanitizeCategory(body) {
@@ -241,57 +253,65 @@ function sanitizeCategory(body) {
   };
 }
 
-adminRouter.post('/categories', (req, res, next) => {
+adminRouter.post('/categories', async (req, res, next) => {
   try {
     const c = sanitizeCategory(req.body);
-    const info = db.prepare(`
-      INSERT INTO categories (slug, name_es, name_en, icon, sort_order, active)
-      VALUES (@slug, @name_es, @name_en, @icon, @sort_order, @active)
-    `).run(c);
-    const row = db.prepare('SELECT * FROM categories WHERE id = ?').get(info.lastInsertRowid);
-    res.status(201).json({ success: true, data: row });
+    const [result] = await pool.execute(
+      `INSERT INTO categories (slug, name_es, name_en, icon, sort_order, active)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [c.slug, c.name_es, c.name_en, c.icon, c.sort_order, c.active]
+    );
+    const [rows] = await pool.execute('SELECT * FROM categories WHERE id = ?', [result.insertId]);
+    res.status(201).json({ success: true, data: rows[0] });
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) {
+    if (e.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ success: false, error: 'Ya existe una categoría con ese slug' });
     }
     next(e);
   }
 });
 
-adminRouter.put('/categories/:id', (req, res, next) => {
+adminRouter.put('/categories/:id', async (req, res, next) => {
   try {
-    const exists = db.prepare('SELECT slug FROM categories WHERE id = ?').get(req.params.id);
-    if (!exists) return res.status(404).json({ success: false, error: 'No encontrada' });
+    const [existsRows] = await pool.execute('SELECT slug FROM categories WHERE id = ?', [req.params.id]);
+    if (existsRows.length === 0) return res.status(404).json({ success: false, error: 'No encontrada' });
+    const prevSlug = existsRows[0].slug;
     const c = sanitizeCategory(req.body);
-    db.prepare(`
-      UPDATE categories SET
-        slug=@slug, name_es=@name_es, name_en=@name_en,
-        icon=@icon, sort_order=@sort_order, active=@active
-      WHERE id=@id
-    `).run({ ...c, id: Number(req.params.id) });
-    // Si cambió el slug, actualiza productos existentes
-    if (c.slug !== exists.slug) {
-      db.prepare('UPDATE products SET category = ? WHERE category = ?').run(c.slug, exists.slug);
+    await pool.execute(
+      `UPDATE categories SET
+         slug=?, name_es=?, name_en=?,
+         icon=?, sort_order=?, active=?
+       WHERE id=?`,
+      [c.slug, c.name_es, c.name_en, c.icon, c.sort_order, c.active, Number(req.params.id)]
+    );
+    if (c.slug !== prevSlug) {
+      await pool.execute('UPDATE products SET category = ? WHERE category = ?', [c.slug, prevSlug]);
     }
-    const row = db.prepare('SELECT * FROM categories WHERE id = ?').get(req.params.id);
-    res.json({ success: true, data: row });
+    const [rows] = await pool.execute('SELECT * FROM categories WHERE id = ?', [req.params.id]);
+    res.json({ success: true, data: rows[0] });
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) {
+    if (e.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ success: false, error: 'Ya existe una categoría con ese slug' });
     }
     next(e);
   }
 });
 
-adminRouter.delete('/categories/:id', (req, res) => {
-  const row = db.prepare('SELECT slug FROM categories WHERE id = ?').get(req.params.id);
-  if (!row) return res.status(404).json({ success: false, error: 'No encontrada' });
-  const used = db.prepare('SELECT COUNT(*) as n FROM products WHERE category = ? AND active = 1').get(row.slug).n;
-  if (used > 0) {
-    return res.status(409).json({ success: false, error: `No se puede eliminar: ${used} producto(s) activo(s) usan esta categoría` });
-  }
-  db.prepare('UPDATE categories SET active = 0 WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
+adminRouter.delete('/categories/:id', async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute('SELECT slug FROM categories WHERE id = ?', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'No encontrada' });
+    const slug = rows[0].slug;
+    const [[{ used }]] = await pool.execute(
+      'SELECT COUNT(*) AS used FROM products WHERE category = ? AND active = 1',
+      [slug]
+    );
+    if (used > 0) {
+      return res.status(409).json({ success: false, error: `No se puede eliminar: ${used} producto(s) activo(s) usan esta categoría` });
+    }
+    await pool.execute('UPDATE categories SET active = 0 WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
 });
 
 // ==== SETTINGS ====
@@ -304,39 +324,51 @@ const ALLOWED_SETTING_KEYS = new Set([
   'whatsapp_number'
 ]);
 
-adminRouter.get('/settings', (req, res) => {
-  const rows = db.prepare('SELECT key, value, updated_at FROM settings ORDER BY key').all();
-  res.json({ success: true, data: rows });
+adminRouter.get('/settings', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT `key`, value, updated_at FROM settings ORDER BY `key`');
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
 });
 
-adminRouter.put('/settings', (req, res) => {
-  const body = req.body || {};
-  const update = db.prepare(`
-    INSERT INTO settings (key, value, updated_at)
-    VALUES (@key, @value, CURRENT_TIMESTAMP)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
-  `);
-  const tx = db.transaction((entries) => {
-    for (const [key, value] of entries) {
-      if (!ALLOWED_SETTING_KEYS.has(key)) continue;
-      update.run({ key, value: value == null ? '' : String(value) });
+adminRouter.put('/settings', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      for (const [key, value] of Object.entries(body)) {
+        if (!ALLOWED_SETTING_KEYS.has(key)) continue;
+        await conn.execute(
+          `INSERT INTO settings (\`key\`, value) VALUES (?, ?)
+           ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+          [key, value == null ? '' : String(value)]
+        );
+      }
+      await conn.commit();
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
     }
-  });
-  tx(Object.entries(body));
-  const rows = db.prepare('SELECT key, value FROM settings').all();
-  res.json({ success: true, data: Object.fromEntries(rows.map(r => [r.key, r.value])) });
+    const [rows] = await pool.query('SELECT `key`, value FROM settings');
+    res.json({ success: true, data: Object.fromEntries(rows.map(r => [r.key, r.value])) });
+  } catch (err) { next(err); }
 });
 
 // ==== ORDERS ====
 
-adminRouter.get('/orders', (req, res) => {
-  const rows = db.prepare('SELECT * FROM orders ORDER BY created_at DESC LIMIT 100').all();
-  const parsed = rows.map(o => ({
-    ...o,
-    items: safeJson(o.items_json),
-    shipping: safeJson(o.shipping_json)
-  }));
-  res.json({ success: true, data: parsed });
+adminRouter.get('/orders', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM orders ORDER BY created_at DESC LIMIT 100');
+    const parsed = rows.map(o => ({
+      ...o,
+      items: safeJson(o.items_json),
+      shipping: safeJson(o.shipping_json)
+    }));
+    res.json({ success: true, data: parsed });
+  } catch (err) { next(err); }
 });
 
 function safeJson(s) {
