@@ -1,5 +1,13 @@
 {
-  "dependencies": {
+  "name": "waremarkt-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node backend/server.js",
+    "postinstall": "npm install --prefix backend --omit=dev"
+  },
+  "devDependencies": {
     "puppeteer": "^24.41.0"
   }
 }
