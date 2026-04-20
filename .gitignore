@@ -4,6 +4,8 @@ backend/.env
 backend/db/waremarkt.db
 backend/db/waremarkt.db-shm
 backend/db/waremarkt.db-wal
+backend/uploads/*
+!backend/uploads/.gitkeep
 screenshots/
 *.log
 .DS_Store

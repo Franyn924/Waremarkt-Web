@@ -29,6 +29,11 @@ app.use('/api/categories', categoriesRouter);
 app.use('/api/checkout', checkoutRouter);
 app.use('/api/admin', adminRouter);
 
+// Archivos subidos (fotos/videos de productos)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  maxAge: '7d'
+}));
+
 // Frontend estático (HTML/CSS/JS/imgs del proyecto)
 app.use(express.static(path.join(__dirname, '..'), {
   index: 'index.html',

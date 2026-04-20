@@ -1,6 +1,29 @@
 import { Router } from 'express';
+import multer from 'multer';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { db } from '../db/schema.js';
 import { requireAdmin } from '../middleware/auth.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const uploadsDir = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: uploadsDir,
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10) || '.bin';
+      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+    }
+  }),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!/^(image|video)\//.test(file.mimetype)) return cb(new Error('Solo se permiten imágenes o videos'));
+    cb(null, true);
+  }
+});
 
 export const adminRouter = Router();
 
@@ -60,6 +83,17 @@ function sanitize(body) {
   if (!Number.isFinite(price) || price < 0) {
     throw Object.assign(new Error('Precio inválido'), { statusCode: 400 });
   }
+  const media = Array.isArray(body.media) ? body.media
+    .filter(m => m && typeof m.url === 'string' && m.url.trim())
+    .slice(0, 10)
+    .map(m => ({
+      url: String(m.url).trim(),
+      type: m.type === 'video' ? 'video' : 'image'
+    })) : [];
+  const firstImage = media.find(m => m.type === 'image');
+  const legacyImage = String(body.image_url || '').trim();
+  // Si hay media, la portada = primera imagen. Si no, usa image_url legacy (para migrar sin perder datos).
+  const image_url = firstImage ? firstImage.url : (legacyImage || null);
   return {
     slug: body.slug ? slugify(body.slug) : slugify(name),
     name,
@@ -70,7 +104,8 @@ function sanitize(body) {
     compare_at_cents: body.compare_at_cents ? Math.round(Number(body.compare_at_cents)) : null,
     stock: Number.isFinite(Number(body.stock)) ? Math.max(0, Math.round(Number(body.stock))) : 0,
     icon: String(body.icon || '').trim() || 'package',
-    image_url: String(body.image_url || '').trim() || null,
+    image_url,
+    media_json: media.length ? JSON.stringify(media) : null,
     badge: String(body.badge || '').trim() || null,
     featured: body.featured ? 1 : 0,
     active: body.active === false || body.active === 0 ? 0 : 1
@@ -81,8 +116,8 @@ adminRouter.post('/products', (req, res, next) => {
   try {
     const p = sanitize(req.body);
     const info = db.prepare(`
-      INSERT INTO products (slug, name, category, brand, description, price_cents, compare_at_cents, stock, icon, image_url, badge, featured, active)
-      VALUES (@slug, @name, @category, @brand, @description, @price_cents, @compare_at_cents, @stock, @icon, @image_url, @badge, @featured, @active)
+      INSERT INTO products (slug, name, category, brand, description, price_cents, compare_at_cents, stock, icon, image_url, media_json, badge, featured, active)
+      VALUES (@slug, @name, @category, @brand, @description, @price_cents, @compare_at_cents, @stock, @icon, @image_url, @media_json, @badge, @featured, @active)
     `).run(p);
     const row = db.prepare('SELECT * FROM products WHERE id = ?').get(info.lastInsertRowid);
     res.status(201).json({ success: true, data: row });
@@ -103,7 +138,7 @@ adminRouter.put('/products/:id', (req, res, next) => {
       UPDATE products SET
         slug=@slug, name=@name, category=@category, brand=@brand, description=@description,
         price_cents=@price_cents, compare_at_cents=@compare_at_cents, stock=@stock,
-        icon=@icon, image_url=@image_url, badge=@badge, featured=@featured, active=@active
+        icon=@icon, image_url=@image_url, media_json=@media_json, badge=@badge, featured=@featured, active=@active
       WHERE id=@id
     `).run({ ...p, id: Number(req.params.id) });
     const row = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
@@ -121,6 +156,18 @@ adminRouter.delete('/products/:id', (req, res) => {
   const info = db.prepare('UPDATE products SET active = 0 WHERE id = ?').run(req.params.id);
   if (info.changes === 0) return res.status(404).json({ success: false, error: 'No encontrado' });
   res.json({ success: true });
+});
+
+// ==== MEDIA UPLOAD ====
+
+adminRouter.post('/upload', (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ success: false, error: err.message });
+    if (!req.file) return res.status(400).json({ success: false, error: 'Archivo requerido' });
+    const url = `/uploads/${req.file.filename}`;
+    const type = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
+    res.json({ success: true, data: { url, type, size: req.file.size, name: req.file.originalname } });
+  });
 });
 
 // ==== UPC LOOKUP (upcitemdb trial) ====

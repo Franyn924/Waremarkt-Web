@@ -62,12 +62,33 @@
     </div>
 
     <div x-show="product && !loading" x-cloak class="grid lg:grid-cols-2 gap-10 lg:gap-16">
-      <div class="aspect-square rounded-3xl bg-gradient-to-br from-navy/5 to-azul/10 flex items-center justify-center relative overflow-hidden">
-        <template x-if="product">
-          <i :data-lucide="product.icon || 'package'" class="w-48 h-48 text-navy/30"></i>
-        </template>
-        <img x-show="product?.image_url" :src="product?.image_url" :alt="product?.name" class="absolute inset-0 w-full h-full object-cover" @error="product.image_url = ''">
-        <span x-show="product?.badge" :class="product?.badge?.startsWith('-')?'bg-naranja text-white':'bg-amber text-navy-deep'" class="absolute top-5 left-5 text-sm font-bold px-3 py-1.5 rounded-md" x-text="product?.badge"></span>
+      <div>
+        <div class="aspect-square rounded-3xl bg-gradient-to-br from-navy/5 to-azul/10 flex items-center justify-center relative overflow-hidden">
+          <template x-if="product && media.length === 0">
+            <i :data-lucide="product.icon || 'package'" class="w-48 h-48 text-navy/30"></i>
+          </template>
+          <template x-if="currentMedia && currentMedia.type === 'image'">
+            <img :src="currentMedia.url" :alt="product?.name" class="absolute inset-0 w-full h-full object-cover" @error="mediaError($event)">
+          </template>
+          <template x-if="currentMedia && currentMedia.type === 'video'">
+            <video :src="currentMedia.url" controls playsinline class="absolute inset-0 w-full h-full object-cover bg-black"></video>
+          </template>
+          <span x-show="product?.badge" :class="product?.badge?.startsWith('-')?'bg-naranja text-white':'bg-amber text-navy-deep'" class="absolute top-5 left-5 text-sm font-bold px-3 py-1.5 rounded-md z-10" x-text="product?.badge"></span>
+        </div>
+        <div x-show="media.length > 1" class="grid grid-cols-5 gap-2 mt-3">
+          <template x-for="(m, i) in media" :key="i">
+            <button type="button" @click="mediaIdx = i" :class="mediaIdx === i ? 'border-amber ring-2 ring-amber' : 'border-navy/10 hover:border-azul'" class="aspect-square rounded-lg overflow-hidden border-2 bg-white transition relative">
+              <template x-if="m.type === 'image'">
+                <img :src="m.url" class="w-full h-full object-cover" onerror="this.style.display='none'">
+              </template>
+              <template x-if="m.type === 'video'">
+                <div class="w-full h-full bg-navy/90 flex items-center justify-center">
+                  <i data-lucide="play" class="w-6 h-6 text-white"></i>
+                </div>
+              </template>
+            </button>
+          </template>
+        </div>
       </div>
 
       <div>
@@ -135,6 +156,23 @@
     window.money = WM.money;
     window.productApp = () => ({
       product: null, qty: 1, loading: true, notFound: false,
+      mediaIdx: 0,
+      get media() {
+        if (!this.product) return [];
+        if (this.product.media_json) {
+          try {
+            const arr = JSON.parse(this.product.media_json);
+            if (Array.isArray(arr) && arr.length) return arr;
+          } catch {}
+        }
+        return this.product.image_url ? [{ url: this.product.image_url, type: 'image' }] : [];
+      },
+      get currentMedia() {
+        return this.media[this.mediaIdx] || null;
+      },
+      mediaError(ev) {
+        ev.target.style.display = 'none';
+      },
       init() {
         window.addEventListener('i18n:change', () => this.$nextTick(() => WMi18n.apply()));
       },
@@ -142,6 +180,7 @@
         const slug = new URLSearchParams(location.search).get('slug');
         if (!slug) { this.notFound = true; this.loading = false; return; }
         this.product = await WM.fetchProduct(slug);
+        this.mediaIdx = 0;
         this.loading = false;
         if (!this.product) this.notFound = true;
         this.$nextTick(() => { lucide.createIcons(); WMi18n.apply(); });

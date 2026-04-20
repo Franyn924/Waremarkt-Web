@@ -60,6 +60,12 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_categories_active ON categories(active);
 `);
 
+// Migraciones idempotentes para bases de datos ya creadas
+const productCols = db.prepare('PRAGMA table_info(products)').all().map(c => c.name);
+if (!productCols.includes('media_json')) {
+  db.exec('ALTER TABLE products ADD COLUMN media_json TEXT');
+}
+
 // Seed categorías por defecto si la tabla está vacía (productos existentes siguen funcionando)
 const catCount = db.prepare('SELECT COUNT(*) as n FROM categories').get().n;
 if (catCount === 0) {
