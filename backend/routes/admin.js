@@ -52,8 +52,9 @@ function sanitize(body) {
   const name = String(body.name || '').trim();
   const category = String(body.category || '').trim();
   if (!name) throw Object.assign(new Error('Nombre requerido'), { statusCode: 400 });
-  if (!['computacion', 'accesorios'].includes(category)) {
-    throw Object.assign(new Error('Categoría inválida'), { statusCode: 400 });
+  const catRow = db.prepare('SELECT slug FROM categories WHERE slug = ? AND active = 1').get(category);
+  if (!catRow) {
+    throw Object.assign(new Error('Categoría inválida o inactiva'), { statusCode: 400 });
   }
   const price = Number(body.price_cents);
   if (!Number.isFinite(price) || price < 0) {
@@ -170,6 +171,81 @@ function guessCategory(it) {
   if (accesorios.test(hay)) return 'accesorios';
   return '';
 }
+
+// ==== CATEGORIES CRUD ====
+
+adminRouter.get('/categories', (req, res) => {
+  const rows = db.prepare('SELECT * FROM categories ORDER BY sort_order ASC, name_es ASC').all();
+  res.json({ success: true, data: rows });
+});
+
+function sanitizeCategory(body) {
+  const name_es = String(body.name_es || '').trim();
+  const name_en = String(body.name_en || '').trim();
+  if (!name_es) throw Object.assign(new Error('Nombre (ES) requerido'), { statusCode: 400 });
+  if (!name_en) throw Object.assign(new Error('Name (EN) required'), { statusCode: 400 });
+  return {
+    slug: body.slug ? slugify(body.slug) : slugify(name_es),
+    name_es,
+    name_en,
+    icon: String(body.icon || 'package').trim() || 'package',
+    sort_order: Number.isFinite(Number(body.sort_order)) ? Math.round(Number(body.sort_order)) : 0,
+    active: body.active === false || body.active === 0 ? 0 : 1
+  };
+}
+
+adminRouter.post('/categories', (req, res, next) => {
+  try {
+    const c = sanitizeCategory(req.body);
+    const info = db.prepare(`
+      INSERT INTO categories (slug, name_es, name_en, icon, sort_order, active)
+      VALUES (@slug, @name_es, @name_en, @icon, @sort_order, @active)
+    `).run(c);
+    const row = db.prepare('SELECT * FROM categories WHERE id = ?').get(info.lastInsertRowid);
+    res.status(201).json({ success: true, data: row });
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) {
+      return res.status(409).json({ success: false, error: 'Ya existe una categoría con ese slug' });
+    }
+    next(e);
+  }
+});
+
+adminRouter.put('/categories/:id', (req, res, next) => {
+  try {
+    const exists = db.prepare('SELECT slug FROM categories WHERE id = ?').get(req.params.id);
+    if (!exists) return res.status(404).json({ success: false, error: 'No encontrada' });
+    const c = sanitizeCategory(req.body);
+    db.prepare(`
+      UPDATE categories SET
+        slug=@slug, name_es=@name_es, name_en=@name_en,
+        icon=@icon, sort_order=@sort_order, active=@active
+      WHERE id=@id
+    `).run({ ...c, id: Number(req.params.id) });
+    // Si cambió el slug, actualiza productos existentes
+    if (c.slug !== exists.slug) {
+      db.prepare('UPDATE products SET category = ? WHERE category = ?').run(c.slug, exists.slug);
+    }
+    const row = db.prepare('SELECT * FROM categories WHERE id = ?').get(req.params.id);
+    res.json({ success: true, data: row });
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) {
+      return res.status(409).json({ success: false, error: 'Ya existe una categoría con ese slug' });
+    }
+    next(e);
+  }
+});
+
+adminRouter.delete('/categories/:id', (req, res) => {
+  const row = db.prepare('SELECT slug FROM categories WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ success: false, error: 'No encontrada' });
+  const used = db.prepare('SELECT COUNT(*) as n FROM products WHERE category = ? AND active = 1').get(row.slug).n;
+  if (used > 0) {
+    return res.status(409).json({ success: false, error: `No se puede eliminar: ${used} producto(s) activo(s) usan esta categoría` });
+  }
+  db.prepare('UPDATE categories SET active = 0 WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
 
 // ==== ORDERS ====
 

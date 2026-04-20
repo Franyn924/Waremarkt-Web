@@ -83,8 +83,9 @@
 
       <div class="flex flex-wrap items-center gap-2 mb-8">
         <button @click="setCat('')" data-i18n="shop.all" :class="cat===''?'bg-navy text-white':'bg-navy/5 text-navy hover:bg-navy/10'" class="px-5 py-2 rounded-full text-sm font-semibold transition">Todos</button>
-        <button @click="setCat('computacion')" data-i18n="cats.computacion" :class="cat==='computacion'?'bg-navy text-white':'bg-navy/5 text-navy hover:bg-navy/10'" class="px-5 py-2 rounded-full text-sm font-semibold transition">Computación</button>
-        <button @click="setCat('accesorios')" data-i18n="cats.accesorios" :class="cat==='accesorios'?'bg-navy text-white':'bg-navy/5 text-navy hover:bg-navy/10'" class="px-5 py-2 rounded-full text-sm font-semibold transition">Accesorios</button>
+        <template x-for="c in categories" :key="c.id">
+          <button @click="setCat(c.slug)" :class="cat===c.slug?'bg-navy text-white':'bg-navy/5 text-navy hover:bg-navy/10'" class="px-5 py-2 rounded-full text-sm font-semibold transition" x-text="lang==='en' ? c.name_en : c.name_es"></button>
+        </template>
         <div class="ml-auto text-sm text-carbon/60" x-text="`${products.length} ${productsLabel}`"></div>
       </div>
 
@@ -128,12 +129,22 @@
     window.money = WM.money;
     window.tiendaApp = () => ({
       products: [], loading: true, cat: '',
+      categories: [], lang: WMi18n.get(),
       productsLabel: WMi18n.t('shop.products_label'),
       init() {
-        window.addEventListener('i18n:change', () => {
+        window.addEventListener('i18n:change', (e) => {
+          this.lang = (e.detail && e.detail.lang) || WMi18n.get();
           this.productsLabel = WMi18n.t('shop.products_label');
           this.$nextTick(() => WMi18n.apply());
         });
+        this.loadCategories();
+      },
+      async loadCategories() {
+        try {
+          const r = await fetch(`${WM.API}/categories`);
+          const j = await r.json();
+          this.categories = j.success ? j.data : [];
+        } catch { this.categories = []; }
       },
       async load() {
         this.loading = true;

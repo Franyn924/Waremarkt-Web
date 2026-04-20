@@ -10,6 +10,17 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS categories (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug        TEXT UNIQUE NOT NULL,
+    name_es     TEXT NOT NULL,
+    name_en     TEXT NOT NULL,
+    icon        TEXT DEFAULT 'package',
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    active      INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS products (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     slug        TEXT UNIQUE NOT NULL,
@@ -46,4 +57,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
   CREATE INDEX IF NOT EXISTS idx_products_featured ON products(featured);
   CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+  CREATE INDEX IF NOT EXISTS idx_categories_active ON categories(active);
 `);
+
+// Seed categorías por defecto si la tabla está vacía (productos existentes siguen funcionando)
+const catCount = db.prepare('SELECT COUNT(*) as n FROM categories').get().n;
+if (catCount === 0) {
+  const insertCat = db.prepare(`
+    INSERT INTO categories (slug, name_es, name_en, icon, sort_order)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  insertCat.run('computacion', 'Computación', 'Computers', 'laptop', 1);
+  insertCat.run('accesorios', 'Accesorios', 'Accessories', 'headphones', 2);
+}
