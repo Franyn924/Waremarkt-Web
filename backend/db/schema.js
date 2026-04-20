@@ -54,6 +54,12 @@ db.exec(`
     updated_at           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS settings (
+    key         TEXT PRIMARY KEY,
+    value       TEXT,
+    updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
   CREATE INDEX IF NOT EXISTS idx_products_featured ON products(featured);
   CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
@@ -75,4 +81,30 @@ if (catCount === 0) {
   `);
   insertCat.run('computacion', 'Computación', 'Computers', 'laptop', 1);
   insertCat.run('accesorios', 'Accesorios', 'Accessories', 'headphones', 2);
+}
+
+// Settings: defaults idempotentes (INSERT OR IGNORE no sobreescribe valores existentes)
+const DEFAULT_SETTINGS = {
+  store_name: 'Waremarkt',
+  store_email: 'hola@waremarkt.com',
+  store_phone: '+1 407 943 4098',
+  currency: 'usd',
+  shipping_flat_cents: '0',
+  tax_enabled: '0',
+  tax_behavior: 'exclusive',
+  checkout_success_url: '/gracias.html',
+  checkout_cancel_url: '/tienda.html',
+  whatsapp_number: '14079434098'
+};
+const insertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) insertSetting.run(k, v);
+
+export function getSetting(key, fallback = null) {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  return row ? row.value : fallback;
+}
+
+export function getAllSettings() {
+  const rows = db.prepare('SELECT key, value FROM settings').all();
+  return Object.fromEntries(rows.map(r => [r.key, r.value]));
 }

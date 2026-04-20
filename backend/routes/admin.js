@@ -294,6 +294,39 @@ adminRouter.delete('/categories/:id', (req, res) => {
   res.json({ success: true });
 });
 
+// ==== SETTINGS ====
+
+const ALLOWED_SETTING_KEYS = new Set([
+  'store_name', 'store_email', 'store_phone',
+  'currency', 'shipping_flat_cents',
+  'tax_enabled', 'tax_behavior',
+  'checkout_success_url', 'checkout_cancel_url',
+  'whatsapp_number'
+]);
+
+adminRouter.get('/settings', (req, res) => {
+  const rows = db.prepare('SELECT key, value, updated_at FROM settings ORDER BY key').all();
+  res.json({ success: true, data: rows });
+});
+
+adminRouter.put('/settings', (req, res) => {
+  const body = req.body || {};
+  const update = db.prepare(`
+    INSERT INTO settings (key, value, updated_at)
+    VALUES (@key, @value, CURRENT_TIMESTAMP)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+  `);
+  const tx = db.transaction((entries) => {
+    for (const [key, value] of entries) {
+      if (!ALLOWED_SETTING_KEYS.has(key)) continue;
+      update.run({ key, value: value == null ? '' : String(value) });
+    }
+  });
+  tx(Object.entries(body));
+  const rows = db.prepare('SELECT key, value FROM settings').all();
+  res.json({ success: true, data: Object.fromEntries(rows.map(r => [r.key, r.value])) });
+});
+
 // ==== ORDERS ====
 
 adminRouter.get('/orders', (req, res) => {

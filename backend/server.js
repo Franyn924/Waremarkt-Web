@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { productsRouter } from './routes/products.js';
 import { categoriesRouter } from './routes/categories.js';
+import { settingsRouter } from './routes/settings.js';
 import { checkoutRouter } from './routes/checkout.js';
 import { webhookRouter } from './routes/webhook.js';
 import { adminRouter } from './routes/admin.js';
@@ -26,6 +27,7 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/products', productsRouter);
 app.use('/api/categories', categoriesRouter);
+app.use('/api/settings', settingsRouter);
 app.use('/api/checkout', checkoutRouter);
 app.use('/api/admin', adminRouter);
 
