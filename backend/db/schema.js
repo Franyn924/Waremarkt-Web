@@ -92,8 +92,8 @@ const DEFAULT_SETTINGS = {
   shipping_flat_cents: '0',
   tax_enabled: '0',
   tax_behavior: 'exclusive',
-  checkout_success_url: '/gracias.html',
-  checkout_cancel_url: '/tienda.html',
+  checkout_success_url: '/success.html',
+  checkout_cancel_url: '/cancel.html',
   whatsapp_number: '14079434098'
 };
 const insertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
