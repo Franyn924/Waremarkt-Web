@@ -238,28 +238,60 @@ adminRouter.get('/categories', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-function sanitizeCategory(body) {
+async function sanitizeCategory(body, selfId = null) {
   const name_es = String(body.name_es || '').trim();
   const name_en = String(body.name_en || '').trim();
   if (!name_es) throw Object.assign(new Error('Nombre (ES) requerido'), { statusCode: 400 });
   if (!name_en) throw Object.assign(new Error('Name (EN) required'), { statusCode: 400 });
+
+  let parent_id = null;
+  const rawParent = body.parent_id;
+  if (rawParent !== '' && rawParent != null && Number(rawParent) > 0) {
+    const pid = Math.round(Number(rawParent));
+    if (selfId && pid === selfId) {
+      throw Object.assign(new Error('Una categoría no puede ser padre de sí misma'), { statusCode: 400 });
+    }
+    const [parentRows] = await pool.execute(
+      'SELECT id, parent_id FROM categories WHERE id = ? AND active = 1',
+      [pid]
+    );
+    if (parentRows.length === 0) {
+      throw Object.assign(new Error('Categoría padre inválida o inactiva'), { statusCode: 400 });
+    }
+    if (parentRows[0].parent_id != null) {
+      throw Object.assign(new Error('Solo se permiten 2 niveles: el padre elegido ya es una subcategoría'), { statusCode: 400 });
+    }
+    // Si esta categoría ya tiene hijos, no puede volverse hija
+    if (selfId) {
+      const [[{ n }]] = await pool.execute(
+        'SELECT COUNT(*) AS n FROM categories WHERE parent_id = ? AND active = 1',
+        [selfId]
+      );
+      if (n > 0) {
+        throw Object.assign(new Error('Esta categoría tiene subcategorías; no puede convertirse en subcategoría'), { statusCode: 400 });
+      }
+    }
+    parent_id = pid;
+  }
+
   return {
     slug: body.slug ? slugify(body.slug) : slugify(name_es),
     name_es,
     name_en,
     icon: String(body.icon || 'package').trim() || 'package',
     sort_order: Number.isFinite(Number(body.sort_order)) ? Math.round(Number(body.sort_order)) : 0,
-    active: body.active === false || body.active === 0 ? 0 : 1
+    active: body.active === false || body.active === 0 ? 0 : 1,
+    parent_id
   };
 }
 
 adminRouter.post('/categories', async (req, res, next) => {
   try {
-    const c = sanitizeCategory(req.body);
+    const c = await sanitizeCategory(req.body);
     const [result] = await pool.execute(
-      `INSERT INTO categories (slug, name_es, name_en, icon, sort_order, active)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [c.slug, c.name_es, c.name_en, c.icon, c.sort_order, c.active]
+      `INSERT INTO categories (slug, name_es, name_en, icon, sort_order, active, parent_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [c.slug, c.name_es, c.name_en, c.icon, c.sort_order, c.active, c.parent_id]
     );
     const [rows] = await pool.execute('SELECT * FROM categories WHERE id = ?', [result.insertId]);
     res.status(201).json({ success: true, data: rows[0] });
@@ -273,21 +305,22 @@ adminRouter.post('/categories', async (req, res, next) => {
 
 adminRouter.put('/categories/:id', async (req, res, next) => {
   try {
-    const [existsRows] = await pool.execute('SELECT slug FROM categories WHERE id = ?', [req.params.id]);
+    const selfId = Number(req.params.id);
+    const [existsRows] = await pool.execute('SELECT slug FROM categories WHERE id = ?', [selfId]);
     if (existsRows.length === 0) return res.status(404).json({ success: false, error: 'No encontrada' });
     const prevSlug = existsRows[0].slug;
-    const c = sanitizeCategory(req.body);
+    const c = await sanitizeCategory(req.body, selfId);
     await pool.execute(
       `UPDATE categories SET
          slug=?, name_es=?, name_en=?,
-         icon=?, sort_order=?, active=?
+         icon=?, sort_order=?, active=?, parent_id=?
        WHERE id=?`,
-      [c.slug, c.name_es, c.name_en, c.icon, c.sort_order, c.active, Number(req.params.id)]
+      [c.slug, c.name_es, c.name_en, c.icon, c.sort_order, c.active, c.parent_id, selfId]
     );
     if (c.slug !== prevSlug) {
       await pool.execute('UPDATE products SET category = ? WHERE category = ?', [c.slug, prevSlug]);
     }
-    const [rows] = await pool.execute('SELECT * FROM categories WHERE id = ?', [req.params.id]);
+    const [rows] = await pool.execute('SELECT * FROM categories WHERE id = ?', [selfId]);
     res.json({ success: true, data: rows[0] });
   } catch (e) {
     if (e.code === 'ER_DUP_ENTRY') {
@@ -299,7 +332,8 @@ adminRouter.put('/categories/:id', async (req, res, next) => {
 
 adminRouter.delete('/categories/:id', async (req, res, next) => {
   try {
-    const [rows] = await pool.execute('SELECT slug FROM categories WHERE id = ?', [req.params.id]);
+    const id = Number(req.params.id);
+    const [rows] = await pool.execute('SELECT slug FROM categories WHERE id = ?', [id]);
     if (rows.length === 0) return res.status(404).json({ success: false, error: 'No encontrada' });
     const slug = rows[0].slug;
     const [[{ used }]] = await pool.execute(
@@ -309,7 +343,14 @@ adminRouter.delete('/categories/:id', async (req, res, next) => {
     if (used > 0) {
       return res.status(409).json({ success: false, error: `No se puede eliminar: ${used} producto(s) activo(s) usan esta categoría` });
     }
-    await pool.execute('UPDATE categories SET active = 0 WHERE id = ?', [req.params.id]);
+    const [[{ subs }]] = await pool.execute(
+      'SELECT COUNT(*) AS subs FROM categories WHERE parent_id = ? AND active = 1',
+      [id]
+    );
+    if (subs > 0) {
+      return res.status(409).json({ success: false, error: `No se puede eliminar: ${subs} subcategoría(s) activa(s) dependen de esta` });
+    }
+    await pool.execute('UPDATE categories SET active = 0 WHERE id = ?', [id]);
     res.json({ success: true });
   } catch (err) { next(err); }
 });

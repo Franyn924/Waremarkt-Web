@@ -238,6 +238,7 @@
                   <th class="text-left font-semibold px-4 py-3">Orden</th>
                   <th class="text-left font-semibold px-4 py-3">Nombre (ES)</th>
                   <th class="text-left font-semibold px-4 py-3">Name (EN)</th>
+                  <th class="text-left font-semibold px-4 py-3">Padre</th>
                   <th class="text-left font-semibold px-4 py-3">Slug</th>
                   <th class="text-left font-semibold px-4 py-3">Icono</th>
                   <th class="text-center font-semibold px-4 py-3">Estado</th>
@@ -245,11 +246,15 @@
                 </tr>
               </thead>
               <tbody>
-                <template x-for="c in categories" :key="c.id">
+                <template x-for="c in flatCategories()" :key="c.id">
                   <tr class="border-t border-navy/5">
                     <td class="px-4 py-3 text-carbon/70" x-text="c.sort_order"></td>
-                    <td class="px-4 py-3 font-semibold text-navy" x-text="c.name_es"></td>
+                    <td class="px-4 py-3 font-semibold text-navy">
+                      <span x-show="c.parent_id" class="text-carbon/40 mr-1">↳</span>
+                      <span x-text="c.name_es"></span>
+                    </td>
                     <td class="px-4 py-3 text-carbon/70" x-text="c.name_en"></td>
+                    <td class="px-4 py-3 text-carbon/70 text-xs" x-text="parentName(c.parent_id) || '—'"></td>
                     <td class="px-4 py-3 text-carbon/60 text-xs font-mono" x-text="c.slug"></td>
                     <td class="px-4 py-3">
                       <div class="flex items-center gap-2 text-carbon/70">
@@ -428,8 +433,8 @@
             <label class="block text-xs font-semibold text-carbon/70 uppercase tracking-wider mb-1.5">Categoría *</label>
             <select x-model="editing.category" required class="w-full border border-navy/15 rounded-lg px-3 py-2 text-sm">
               <option value="">Selecciona...</option>
-              <template x-for="c in categories" :key="c.id">
-                <option :value="c.slug" x-text="c.name_es"></option>
+              <template x-for="c in flatCategories()" :key="c.id">
+                <option :value="c.slug" x-text="(c.parent_id ? '   ↳ ' : '') + c.name_es"></option>
               </template>
             </select>
           </div>
@@ -538,6 +543,16 @@
           <div>
             <label class="block text-xs font-semibold text-carbon/70 uppercase tracking-wider mb-1.5">Slug</label>
             <input type="text" x-model="editingCat.slug" placeholder="auto desde nombre" class="w-full border border-navy/15 rounded-lg px-3 py-2 text-sm font-mono">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-carbon/70 uppercase tracking-wider mb-1.5">Categoría padre</label>
+            <select x-model="editingCat.parent_id" class="w-full border border-navy/15 rounded-lg px-3 py-2 text-sm">
+              <option :value="null">— Ninguna (categoría principal)</option>
+              <template x-for="p in availableParents()" :key="p.id">
+                <option :value="p.id" x-text="p.name_es"></option>
+              </template>
+            </select>
+            <p class="text-[11px] text-carbon/50 mt-1">Máximo 2 niveles. Deja vacío para crear una categoría principal.</p>
           </div>
           <div>
             <label class="block text-xs font-semibold text-carbon/70 uppercase tracking-wider mb-1.5">Icono Lucide</label>
@@ -799,15 +814,49 @@
       },
 
       openNewCat() {
-        this.editingCat = { name_es: '', name_en: '', slug: '', icon: 'package', sort_order: (this.categories.length + 1) * 10, active: true };
+        this.editingCat = { name_es: '', name_en: '', slug: '', icon: 'package', sort_order: (this.categories.length + 1) * 10, active: true, parent_id: null };
         this.catFormError = ''; this.catModalOpen = true;
         this.$nextTick(() => lucide.createIcons());
       },
 
       openEditCat(c) {
-        this.editingCat = { ...c, active: !!c.active };
+        this.editingCat = { ...c, active: !!c.active, parent_id: c.parent_id || null };
         this.catFormError = ''; this.catModalOpen = true;
         this.$nextTick(() => lucide.createIcons());
+      },
+
+      flatCategories() {
+        const byParent = new Map();
+        const roots = [];
+        for (const c of this.categories) {
+          if (c.parent_id) {
+            if (!byParent.has(c.parent_id)) byParent.set(c.parent_id, []);
+            byParent.get(c.parent_id).push(c);
+          } else {
+            roots.push(c);
+          }
+        }
+        const out = [];
+        for (const r of roots) {
+          out.push(r);
+          for (const ch of (byParent.get(r.id) || [])) out.push(ch);
+        }
+        // Huérfanas (padre eliminado) al final
+        const seen = new Set(out.map(c => c.id));
+        for (const c of this.categories) if (!seen.has(c.id)) out.push(c);
+        return out;
+      },
+
+      parentName(parentId) {
+        if (!parentId) return '';
+        const p = this.categories.find(c => c.id === parentId);
+        return p ? p.name_es : '';
+      },
+
+      availableParents() {
+        // Solo categorías principales (parent_id null) y que no sean la que se edita
+        const selfId = this.editingCat?.id;
+        return this.categories.filter(c => !c.parent_id && c.id !== selfId);
       },
 
       async saveCategory() {

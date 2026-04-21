@@ -81,12 +81,18 @@
   <section class="py-10 lg:py-14">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" x-data="tiendaApp()" x-init="init(); load()">
 
-      <div class="flex flex-wrap items-center gap-2 mb-8">
+      <div class="flex flex-wrap items-center gap-2 mb-3">
         <button @click="setCat('')" data-i18n="shop.all" :class="cat===''?'bg-navy text-white':'bg-navy/5 text-navy hover:bg-navy/10'" class="px-5 py-2 rounded-full text-sm font-semibold transition">Todos</button>
-        <template x-for="c in categories" :key="c.id">
-          <button @click="setCat(c.slug)" :class="cat===c.slug?'bg-navy text-white':'bg-navy/5 text-navy hover:bg-navy/10'" class="px-5 py-2 rounded-full text-sm font-semibold transition" x-text="lang==='en' ? c.name_en : c.name_es"></button>
+        <template x-for="c in parentCategories()" :key="c.id">
+          <button @click="setCat(c.slug)" :class="isActiveParent(c)?'bg-navy text-white':'bg-navy/5 text-navy hover:bg-navy/10'" class="px-5 py-2 rounded-full text-sm font-semibold transition" x-text="lang==='en' ? c.name_en : c.name_es"></button>
         </template>
         <div class="ml-auto text-sm text-carbon/60" x-text="`${products.length} ${productsLabel}`"></div>
+      </div>
+
+      <div x-show="subCategories().length > 0" x-cloak class="flex flex-wrap items-center gap-2 mb-8 pl-4 border-l-2 border-azul/30">
+        <template x-for="s in subCategories()" :key="s.id">
+          <button @click="setCat(s.slug)" :class="cat===s.slug?'bg-azul text-white':'bg-white text-carbon hover:bg-azul/5 border border-navy/10'" class="px-4 py-1.5 rounded-full text-xs font-semibold transition" x-text="lang==='en' ? s.name_en : s.name_es"></button>
+        </template>
       </div>
 
       <div x-show="loading" data-i18n="shop.loading" class="text-center py-20 text-carbon/60">Cargando productos...</div>
@@ -159,6 +165,23 @@
         this.cat = c;
         history.replaceState({}, '', c ? `?cat=${c}` : location.pathname);
         this.load();
+      },
+      parentCategories() {
+        return this.categories.filter(c => !c.parent_id);
+      },
+      subCategories() {
+        // Si la cat activa es un padre, mostrar sus hijas.
+        // Si la cat activa es una hija, mostrar las hermanas (hijas del mismo padre).
+        if (!this.cat) return [];
+        const current = this.categories.find(c => c.slug === this.cat);
+        if (!current) return [];
+        const parentId = current.parent_id || current.id;
+        return this.categories.filter(c => c.parent_id === parentId);
+      },
+      isActiveParent(c) {
+        if (this.cat === c.slug) return true;
+        const current = this.categories.find(x => x.slug === this.cat);
+        return !!(current && current.parent_id === c.id);
       },
       addToCart(p) {
         WM.cart.add(p, 1);

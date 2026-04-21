@@ -103,6 +103,7 @@ export async function initDb() {
 
   // Migraciones idempotentes para bases ya creadas sin estas columnas
   await ensureColumn('products', 'media_json', 'TEXT');
+  await ensureColumn('categories', 'parent_id', 'INT NULL');
 
   // Seed categorías si está vacía
   const [catRows] = await pool.query('SELECT COUNT(*) AS n FROM categories');

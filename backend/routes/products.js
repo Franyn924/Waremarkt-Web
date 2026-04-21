@@ -9,7 +9,15 @@ productsRouter.get('/', async (req, res, next) => {
     let sql = 'SELECT * FROM products WHERE active = 1';
     const params = [];
 
-    if (category) { sql += ' AND category = ?'; params.push(category); }
+    if (category) {
+      // Si la categoría es padre, expande a sí misma + todas sus subcategorías activas
+      sql += ` AND (category = ? OR category IN (
+        SELECT c.slug FROM categories c
+        JOIN categories p ON c.parent_id = p.id
+        WHERE p.slug = ? AND c.active = 1
+      ))`;
+      params.push(category, category);
+    }
     if (featured === '1') sql += ' AND featured = 1';
     sql += ' ORDER BY featured DESC, created_at DESC';
     const lim = Math.max(0, Math.min(1000, Number(limit) || 0));
