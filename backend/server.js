@@ -2,8 +2,9 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { initDb } from './db/schema.js';
+import { initDb, pool } from './db/schema.js';
 import { productsRouter } from './routes/products.js';
 import { categoriesRouter } from './routes/categories.js';
 import { settingsRouter } from './routes/settings.js';
@@ -36,6 +37,88 @@ app.use('/api/admin', adminRouter);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   maxAge: '7d'
 }));
+
+// producto.html con Open Graph dinámico según ?slug= (va antes del static)
+const FRONTEND_ROOT = path.join(__dirname, '..');
+const PRODUCTO_HTML_PATH = path.join(FRONTEND_ROOT, 'producto.html');
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function absolutizeUrl(u, req) {
+  if (!u) return '';
+  if (/^https?:\/\//i.test(u)) return u;
+  const base = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
+  return base.replace(/\/$/, '') + (u.startsWith('/') ? u : '/' + u);
+}
+
+async function productoHandler(req, res, next) {
+  try {
+    let html = await fs.readFile(PRODUCTO_HTML_PATH, 'utf8');
+    const slug = String(req.query.slug || '').trim();
+
+    let title = 'Producto — Waremarkt';
+    let description = 'Computación y accesorios con envío US + LatAm.';
+    let image = '';
+    const pageUrl = absolutizeUrl(req.originalUrl, req);
+
+    if (slug) {
+      const [rows] = await pool.execute(
+        'SELECT name, description, image_url, media_json, price_cents FROM products WHERE slug = ? AND active = 1',
+        [slug]
+      );
+      if (rows.length) {
+        const p = rows[0];
+        title = `${p.name} — Waremarkt`;
+        const desc = String(p.description || '').replace(/\s+/g, ' ').trim();
+        if (desc) description = desc.slice(0, 200);
+
+        let img = p.image_url || '';
+        if (!img && p.media_json) {
+          try {
+            const arr = JSON.parse(p.media_json);
+            const first = Array.isArray(arr) ? arr.find(m => m && m.type === 'image' && m.url) : null;
+            if (first) img = first.url;
+          } catch {}
+        }
+        if (img) image = absolutizeUrl(img, req);
+      }
+    }
+
+    const cardType = image ? 'summary_large_image' : 'summary';
+    const og = [
+      `<title>${escapeHtml(title)}</title>`,
+      `<meta name="description" content="${escapeHtml(description)}">`,
+      `<meta property="og:site_name" content="Waremarkt">`,
+      `<meta property="og:type" content="${slug ? 'product' : 'website'}">`,
+      `<meta property="og:title" content="${escapeHtml(title)}">`,
+      `<meta property="og:description" content="${escapeHtml(description)}">`,
+      `<meta property="og:url" content="${escapeHtml(pageUrl)}">`,
+      image ? `<meta property="og:image" content="${escapeHtml(image)}">` : '',
+      `<meta name="twitter:card" content="${cardType}">`,
+      `<meta name="twitter:title" content="${escapeHtml(title)}">`,
+      `<meta name="twitter:description" content="${escapeHtml(description)}">`,
+      image ? `<meta name="twitter:image" content="${escapeHtml(image)}">` : ''
+    ].filter(Boolean).join('\n  ');
+
+    html = html.replace(
+      /<!-- OG:START -->[\s\S]*?<!-- OG:END -->/,
+      `<!-- OG:START -->\n  ${og}\n  <!-- OG:END -->`
+    );
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.send(html);
+  } catch (err) { next(err); }
+}
+
+app.get(['/producto', '/producto.html'], productoHandler);
 
 // Frontend estático (HTML/CSS/JS/imgs del proyecto)
 app.use(express.static(path.join(__dirname, '..'), {
