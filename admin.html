@@ -186,7 +186,14 @@
 
       <!-- Orders -->
       <div x-show="tab==='orders'">
-        <h1 class="font-display font-bold text-3xl text-navy mb-6">Pedidos</h1>
+        <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+          <h1 class="font-display font-bold text-3xl text-navy">Pedidos</h1>
+          <button @click="backfillStripe()" :disabled="backfillLoading" class="border-2 border-navy/20 hover:border-azul hover:text-azul text-navy font-semibold px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
+            <i data-lucide="refresh-cw" class="w-4 h-4" :class="backfillLoading ? 'animate-spin' : ''"></i>
+            <span x-text="backfillLoading ? 'Recuperando…' : 'Recuperar ventas de Stripe'"></span>
+          </button>
+        </div>
+        <div x-show="backfillMsg" x-cloak class="mb-4 px-4 py-3 rounded-xl text-sm" :class="backfillOk ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'" x-text="backfillMsg"></div>
         <div class="bg-white rounded-2xl border border-navy/10 overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -607,6 +614,7 @@
       stats: { products: 0, lowStock: 0, paidOrders: 0, revenueCents: 0, pendingOrders: 0 },
       products: [], orders: [],
       categories: [],
+      backfillLoading: false, backfillMsg: '', backfillOk: true,
       modalOpen: false, editing: {}, priceDollars: 0, compareDollars: null,
       saving: false, formError: '',
       upcCode: '', upcLoading: false, upcError: '', upcResults: [],
@@ -681,6 +689,36 @@
         const j = await r.json();
         this.orders = j.success ? j.data : [];
         this.$nextTick(() => lucide.createIcons());
+      },
+
+      async backfillStripe() {
+        if (this.backfillLoading) return;
+        if (!confirm('Esto va a buscar en Stripe las últimas 50 sesiones pagadas y agregar las que falten en la base de datos. ¿Continuar?')) return;
+        this.backfillLoading = true;
+        this.backfillMsg = '';
+        try {
+          const r = await fetch(`${API}/admin/orders/backfill-stripe`, {
+            method: 'POST',
+            headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ limit: 50 })
+          });
+          const j = await r.json();
+          if (!j.success) throw new Error(j.error || 'Error al recuperar');
+          const rec = j.data.recovered || [];
+          const skip = j.data.skipped || [];
+          this.backfillOk = true;
+          this.backfillMsg = rec.length
+            ? `✓ Recuperadas ${rec.length} venta(s). (${skip.length} ya existían o no estaban pagadas.)`
+            : `No hay ventas nuevas que recuperar. Revisadas ${skip.length} sesiones.`;
+          await this.loadOrders();
+          await this.loadStats();
+        } catch (e) {
+          this.backfillOk = false;
+          this.backfillMsg = `Error: ${e.message}`;
+        } finally {
+          this.backfillLoading = false;
+          this.$nextTick(() => lucide.createIcons());
+        }
       },
 
       resetUpc() {
