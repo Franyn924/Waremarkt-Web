@@ -123,6 +123,35 @@
           <i data-lucide="message-circle" class="inline w-4 h-4 mr-1 -mt-0.5"></i> <span data-i18n="prod.ask_wa">Consultar por WhatsApp</span>
         </a>
 
+        <div class="relative mt-3" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
+          <button type="button" @click="shareProduct(() => open = !open)" class="w-full border-2 border-navy/20 hover:border-azul hover:text-azul text-navy font-semibold py-3.5 rounded-full transition flex items-center justify-center gap-2">
+            <i data-lucide="share-2" class="w-4 h-4"></i>
+            <span data-i18n="prod.share">Compartir producto</span>
+          </button>
+          <div x-show="open" x-cloak x-transition.opacity class="absolute bottom-full mb-2 left-0 right-0 bg-white rounded-2xl shadow-2xl border border-navy/10 p-2 z-20">
+            <a :href="shareWa()" target="_blank" rel="noopener" @click="open = false" class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-navy/5 transition">
+              <i data-lucide="message-circle" class="w-5 h-5 text-[#25D366]"></i>
+              <span class="text-sm font-medium text-navy">WhatsApp</span>
+            </a>
+            <a :href="shareFb()" target="_blank" rel="noopener" @click="open = false" class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-navy/5 transition">
+              <i data-lucide="facebook" class="w-5 h-5 text-[#1877F2]"></i>
+              <span class="text-sm font-medium text-navy">Facebook</span>
+            </a>
+            <a :href="shareTw()" target="_blank" rel="noopener" @click="open = false" class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-navy/5 transition">
+              <i data-lucide="twitter" class="w-5 h-5 text-navy"></i>
+              <span class="text-sm font-medium text-navy">X / Twitter</span>
+            </a>
+            <a :href="shareMail()" @click="open = false" class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-navy/5 transition">
+              <i data-lucide="mail" class="w-5 h-5 text-navy/70"></i>
+              <span data-i18n="prod.share_email" class="text-sm font-medium text-navy">Correo</span>
+            </a>
+            <button type="button" @click="copyLink(); open = false" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-navy/5 transition text-left">
+              <i data-lucide="link" class="w-5 h-5 text-navy/70"></i>
+              <span data-i18n="prod.share_copy" class="text-sm font-medium text-navy">Copiar enlace</span>
+            </button>
+          </div>
+        </div>
+
         <div class="mt-10 pt-8 border-t border-navy/10 grid grid-cols-2 gap-5 text-sm">
           <div class="flex items-start gap-3">
             <i data-lucide="truck" class="w-5 h-5 text-amber mt-0.5"></i>
@@ -194,6 +223,49 @@
         if (!this.product) return '#';
         const msg = `Hola! Me interesa: ${this.product.name} (${WM.money(this.product.price_cents)})`;
         return `https://wa.me/14079434098?text=${encodeURIComponent(msg)}`;
+      },
+      shareUrl() { return location.href; },
+      shareText() {
+        if (!this.product) return '';
+        return `${this.product.name} — ${WM.money(this.product.price_cents)} en Waremarkt`;
+      },
+      shareWa() {
+        return `https://wa.me/?text=${encodeURIComponent(this.shareText() + ' ' + this.shareUrl())}`;
+      },
+      shareFb() {
+        return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(this.shareUrl())}`;
+      },
+      shareTw() {
+        return `https://twitter.com/intent/tweet?text=${encodeURIComponent(this.shareText())}&url=${encodeURIComponent(this.shareUrl())}`;
+      },
+      shareMail() {
+        const subject = this.product?.name || 'Waremarkt';
+        const body = `${this.shareText()}\n\n${this.shareUrl()}`;
+        return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      },
+      async shareProduct(fallback) {
+        if (!this.product) return;
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: this.product.name,
+              text: this.shareText(),
+              url: this.shareUrl()
+            });
+            return;
+          } catch (e) {
+            if (e && e.name === 'AbortError') return;
+          }
+        }
+        fallback();
+      },
+      async copyLink() {
+        try {
+          await navigator.clipboard.writeText(this.shareUrl());
+          window.dispatchEvent(new CustomEvent('cart-toast', { detail: WMi18n.t('prod.share_copied') }));
+        } catch {
+          window.dispatchEvent(new CustomEvent('cart-toast', { detail: WMi18n.t('prod.share_copy_fail') }));
+        }
       }
     });
 
