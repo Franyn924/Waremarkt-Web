@@ -130,9 +130,11 @@ async function sanitize(body) {
   const firstImage = media.find(m => m.type === 'image');
   const legacyImage = String(body.image_url || '').trim();
   const image_url = firstImage ? firstImage.url : (legacyImage || null);
+  const sku = String(body.sku || '').trim().toUpperCase().slice(0, 80) || null;
   return {
     slug: body.slug ? slugify(body.slug) : slugify(name),
     name,
+    sku,
     category,
     brand: String(body.brand || '').trim() || null,
     description: String(body.description || '').trim() || null,
@@ -152,9 +154,9 @@ adminRouter.post('/products', async (req, res, next) => {
   try {
     const p = await sanitize(req.body);
     const [result] = await pool.execute(
-      `INSERT INTO products (slug, name, category, brand, description, price_cents, compare_at_cents, stock, icon, image_url, media_json, badge, featured, active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [p.slug, p.name, p.category, p.brand, p.description, p.price_cents, p.compare_at_cents, p.stock, p.icon, p.image_url, p.media_json, p.badge, p.featured, p.active]
+      `INSERT INTO products (slug, name, sku, category, brand, description, price_cents, compare_at_cents, stock, icon, image_url, media_json, badge, featured, active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [p.slug, p.name, p.sku, p.category, p.brand, p.description, p.price_cents, p.compare_at_cents, p.stock, p.icon, p.image_url, p.media_json, p.badge, p.featured, p.active]
     );
     const [rows] = await pool.execute('SELECT * FROM products WHERE id = ?', [result.insertId]);
     res.status(201).json({ success: true, data: rows[0] });
@@ -173,11 +175,11 @@ adminRouter.put('/products/:id', async (req, res, next) => {
     const p = await sanitize(req.body);
     await pool.execute(
       `UPDATE products SET
-         slug=?, name=?, category=?, brand=?, description=?,
+         slug=?, name=?, sku=?, category=?, brand=?, description=?,
          price_cents=?, compare_at_cents=?, stock=?,
          icon=?, image_url=?, media_json=?, badge=?, featured=?, active=?
        WHERE id=?`,
-      [p.slug, p.name, p.category, p.brand, p.description, p.price_cents, p.compare_at_cents, p.stock, p.icon, p.image_url, p.media_json, p.badge, p.featured, p.active, Number(req.params.id)]
+      [p.slug, p.name, p.sku, p.category, p.brand, p.description, p.price_cents, p.compare_at_cents, p.stock, p.icon, p.image_url, p.media_json, p.badge, p.featured, p.active, Number(req.params.id)]
     );
     const [rows] = await pool.execute('SELECT * FROM products WHERE id = ?', [req.params.id]);
     res.json({ success: true, data: rows[0] });

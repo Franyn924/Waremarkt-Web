@@ -5,7 +5,7 @@ export const productsRouter = Router();
 
 productsRouter.get('/', async (req, res, next) => {
   try {
-    const { category, featured, limit } = req.query;
+    const { category, featured, limit, q } = req.query;
     let sql = 'SELECT * FROM products WHERE active = 1';
     const params = [];
 
@@ -19,6 +19,14 @@ productsRouter.get('/', async (req, res, next) => {
       params.push(category, category);
     }
     if (featured === '1') sql += ' AND featured = 1';
+
+    const term = String(q || '').trim();
+    if (term) {
+      const like = `%${term}%`;
+      sql += ' AND (name LIKE ? OR brand LIKE ? OR description LIKE ? OR sku LIKE ? OR slug LIKE ?)';
+      params.push(like, like, like, like, like);
+    }
+
     sql += ' ORDER BY featured DESC, created_at DESC';
     const lim = Math.max(0, Math.min(1000, Number(limit) || 0));
     if (lim > 0) sql += ` LIMIT ${lim}`;

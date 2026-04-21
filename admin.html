@@ -130,6 +130,7 @@
               <thead class="bg-navy/5 text-carbon/70 uppercase text-[11px] tracking-wider">
                 <tr>
                   <th class="text-left font-semibold px-4 py-3">Producto</th>
+                  <th class="text-left font-semibold px-4 py-3">SKU</th>
                   <th class="text-left font-semibold px-4 py-3">Categoría</th>
                   <th class="text-right font-semibold px-4 py-3">Precio</th>
                   <th class="text-right font-semibold px-4 py-3">Stock</th>
@@ -151,6 +152,7 @@
                         </div>
                       </div>
                     </td>
+                    <td class="px-4 py-3 font-mono text-xs text-carbon/70" x-text="p.sku || '—'"></td>
                     <td class="px-4 py-3 capitalize" x-text="p.category"></td>
                     <td class="px-4 py-3 text-right font-semibold" x-text="money(p.price_cents)"></td>
                     <td class="px-4 py-3 text-right" :class="p.stock <= 5 ? 'text-red-600 font-semibold' : ''" x-text="p.stock"></td>
@@ -428,6 +430,11 @@
           <div>
             <label class="block text-xs font-semibold text-carbon/70 uppercase tracking-wider mb-1.5">Marca</label>
             <input type="text" x-model="editing.brand" class="w-full border border-navy/15 rounded-lg px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-carbon/70 uppercase tracking-wider mb-1.5">SKU / Código</label>
+            <input type="text" x-model="editing.sku" placeholder="WM-LAP-001" class="w-full border border-navy/15 rounded-lg px-3 py-2 text-sm font-mono uppercase">
+            <p class="text-[11px] text-carbon/50 mt-1">Código interno para inventario. Se guarda en mayúsculas.</p>
           </div>
           <div>
             <label class="block text-xs font-semibold text-carbon/70 uppercase tracking-wider mb-1.5">Categoría *</label>

@@ -36,6 +36,17 @@ async function ensureColumn(table, column, definition) {
   }
 }
 
+async function ensureIndex(table, indexName, columns) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS n FROM information_schema.statistics
+     WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
+    [table, indexName]
+  );
+  if (rows[0].n === 0) {
+    await pool.query(`CREATE INDEX \`${indexName}\` ON \`${table}\` (${columns})`);
+  }
+}
+
 export async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS categories (
@@ -104,6 +115,8 @@ export async function initDb() {
   // Migraciones idempotentes para bases ya creadas sin estas columnas
   await ensureColumn('products', 'media_json', 'TEXT');
   await ensureColumn('categories', 'parent_id', 'INT NULL');
+  await ensureColumn('products', 'sku', 'VARCHAR(80) NULL');
+  await ensureIndex('products', 'idx_products_sku', 'sku');
 
   // Seed categorías si está vacía
   const [catRows] = await pool.query('SELECT COUNT(*) AS n FROM categories');

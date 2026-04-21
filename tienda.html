@@ -81,6 +81,19 @@
   <section class="py-10 lg:py-14">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" x-data="tiendaApp()" x-init="init(); load()">
 
+      <div class="relative mb-5 max-w-xl">
+        <i data-lucide="search" class="w-5 h-5 text-carbon/40 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+        <input
+          type="search"
+          x-model="q"
+          @input.debounce.350ms="load()"
+          placeholder="Buscar por nombre, SKU, marca…"
+          class="w-full pl-11 pr-10 py-3 border border-navy/15 rounded-full text-sm focus:outline-none focus:border-azul focus:ring-2 focus:ring-azul/20 transition">
+        <button x-show="q" x-cloak @click="q=''; load()" class="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full hover:bg-navy/10 flex items-center justify-center" aria-label="Limpiar búsqueda">
+          <i data-lucide="x" class="w-4 h-4 text-carbon/60"></i>
+        </button>
+      </div>
+
       <div class="flex flex-wrap items-center gap-2 mb-3">
         <button @click="setCat('')" data-i18n="shop.all" :class="cat===''?'bg-navy text-white':'bg-navy/5 text-navy hover:bg-navy/10'" class="px-5 py-2 rounded-full text-sm font-semibold transition">Todos</button>
         <template x-for="c in parentCategories()" :key="c.id">
@@ -134,7 +147,7 @@
   <script>
     window.money = WM.money;
     window.tiendaApp = () => ({
-      products: [], loading: true, cat: '',
+      products: [], loading: true, cat: '', q: '',
       categories: [], lang: WMi18n.get(),
       productsLabel: WMi18n.t('shop.products_label'),
       init() {
@@ -143,6 +156,9 @@
           this.productsLabel = WMi18n.t('shop.products_label');
           this.$nextTick(() => WMi18n.apply());
         });
+        const params = new URLSearchParams(location.search);
+        this.cat = params.get('cat') || '';
+        this.q = params.get('q') || '';
         this.loadCategories();
       },
       async loadCategories() {
@@ -154,16 +170,25 @@
       },
       async load() {
         this.loading = true;
-        const params = new URLSearchParams(location.search);
-        this.cat = params.get('cat') || '';
-        const q = this.cat ? { category: this.cat } : {};
-        this.products = await WM.fetchProducts(q);
+        const query = {};
+        if (this.cat) query.category = this.cat;
+        const term = String(this.q || '').trim();
+        if (term) query.q = term;
+        this.syncUrl();
+        this.products = await WM.fetchProducts(query);
         this.loading = false;
         this.$nextTick(() => { lucide.createIcons(); WMi18n.apply(); });
       },
+      syncUrl() {
+        const p = new URLSearchParams();
+        if (this.cat) p.set('cat', this.cat);
+        const term = String(this.q || '').trim();
+        if (term) p.set('q', term);
+        const qs = p.toString();
+        history.replaceState({}, '', qs ? `?${qs}` : location.pathname);
+      },
       setCat(c) {
         this.cat = c;
-        history.replaceState({}, '', c ? `?cat=${c}` : location.pathname);
         this.load();
       },
       parentCategories() {
