@@ -1,6 +1,7 @@
 import { Router, raw } from 'express';
 import Stripe from 'stripe';
 import { pool } from '../db/schema.js';
+import { sendOrderConfirmation } from '../services/mailer.js';
 
 export const webhookRouter = Router();
 
@@ -48,6 +49,38 @@ webhookRouter.post('/', raw({ type: 'application/json' }), async (req, res) => {
           'UPDATE products SET stock = GREATEST(0, stock - ?) WHERE slug = ?',
           [i.q, i.s]
         );
+      }
+
+      // Email de confirmación al cliente
+      const [orderRows] = await pool.execute(
+        'SELECT id, amount_total_cents, currency, items_json, customer_email, customer_name, shipping_json FROM orders WHERE stripe_session_id = ?',
+        [s.id]
+      );
+      if (orderRows[0]) {
+        const o = orderRows[0];
+        let itemsParsed = [];
+        try { itemsParsed = JSON.parse(o.items_json || '[]'); } catch {}
+        // Enriquecer con SKU desde productos
+        for (const it of itemsParsed) {
+          if (it.slug) {
+            const [pr] = await pool.execute('SELECT sku FROM products WHERE slug = ?', [it.slug]);
+            if (pr[0]?.sku) it.sku = pr[0].sku;
+          }
+        }
+        let shippingParsed = null;
+        try { shippingParsed = JSON.parse(o.shipping_json || 'null'); } catch {}
+        sendOrderConfirmation({
+          order: {
+            id: o.id,
+            amount_total_cents: o.amount_total_cents,
+            currency: o.currency,
+            items: itemsParsed,
+            customer_email: o.customer_email,
+            customer_name: o.customer_name,
+            shipping: shippingParsed
+          },
+          stripeSession: s
+        }).catch(err => console.error('[webhook] mail error:', err.message));
       }
     } catch (e) {
       console.error('[webhook] DB error:', e.message);
