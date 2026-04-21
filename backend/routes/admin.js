@@ -3,6 +3,7 @@ import multer from 'multer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { v2 as cloudinary } from 'cloudinary';
 import { pool } from '../db/schema.js';
 import { requireAdmin } from '../middleware/auth.js';
 
@@ -10,20 +11,48 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
+const CLOUDINARY_ENABLED = !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+if (CLOUDINARY_ENABLED) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true
+  });
+}
+
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: uploadsDir,
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10) || '.bin';
-      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
-    }
-  }),
+  storage: CLOUDINARY_ENABLED
+    ? multer.memoryStorage()
+    : multer.diskStorage({
+        destination: uploadsDir,
+        filename: (req, file, cb) => {
+          const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10) || '.bin';
+          cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+        }
+      }),
   limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (!/^(image|video)\//.test(file.mimetype)) return cb(new Error('Solo se permiten imágenes o videos'));
     cb(null, true);
   }
 });
+
+function uploadBufferToCloudinary(buffer, originalName) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: 'waremarkt',
+        resource_type: 'auto',
+        use_filename: true,
+        unique_filename: true,
+        overwrite: false
+      },
+      (err, result) => err ? reject(err) : resolve(result)
+    );
+    stream.end(buffer);
+  });
+}
 
 export const adminRouter = Router();
 
@@ -171,12 +200,32 @@ adminRouter.delete('/products/:id', async (req, res, next) => {
 // ==== MEDIA UPLOAD ====
 
 adminRouter.post('/upload', (req, res) => {
-  upload.single('file')(req, res, (err) => {
+  upload.single('file')(req, res, async (err) => {
     if (err) return res.status(400).json({ success: false, error: err.message });
     if (!req.file) return res.status(400).json({ success: false, error: 'Archivo requerido' });
-    const url = `/uploads/${req.file.filename}`;
     const type = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
-    res.json({ success: true, data: { url, type, size: req.file.size, name: req.file.originalname } });
+    try {
+      if (CLOUDINARY_ENABLED) {
+        const result = await uploadBufferToCloudinary(req.file.buffer, req.file.originalname);
+        return res.json({
+          success: true,
+          data: {
+            url: result.secure_url,
+            type: result.resource_type === 'video' ? 'video' : 'image',
+            size: result.bytes,
+            name: req.file.originalname,
+            public_id: result.public_id
+          }
+        });
+      }
+      // Fallback local (solo útil en desarrollo; en Hostinger no persiste)
+      res.json({
+        success: true,
+        data: { url: `/uploads/${req.file.filename}`, type, size: req.file.size, name: req.file.originalname }
+      });
+    } catch (e) {
+      res.status(500).json({ success: false, error: `Upload falló: ${e.message}` });
+    }
   });
 });
 
