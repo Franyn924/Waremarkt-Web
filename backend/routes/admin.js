@@ -4,8 +4,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { v2 as cloudinary } from 'cloudinary';
+import Stripe from 'stripe';
 import { pool } from '../db/schema.js';
 import { requireAdmin } from '../middleware/auth.js';
+
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -460,6 +463,88 @@ adminRouter.get('/orders', async (req, res, next) => {
       shipping: safeJson(o.shipping_json)
     }));
     res.json({ success: true, data: parsed });
+  } catch (err) { next(err); }
+});
+
+// Backfill: recupera sesiones complete/paid de Stripe que no estén en la tabla orders.
+// Body opcional: { session_id?: string, limit?: number, dry_run?: boolean }
+adminRouter.post('/orders/backfill-stripe', async (req, res, next) => {
+  try {
+    if (!stripe) return res.status(503).json({ success: false, error: 'Stripe no configurado' });
+    const body = req.body || {};
+    const limit = Math.max(1, Math.min(100, Number(body.limit) || 50));
+    const dryRun = !!body.dry_run;
+    const sessionId = typeof body.session_id === 'string' ? body.session_id.trim() : '';
+
+    let sessions;
+    if (sessionId) {
+      sessions = [await stripe.checkout.sessions.retrieve(sessionId)];
+    } else {
+      const list = await stripe.checkout.sessions.list({ limit });
+      sessions = list.data;
+    }
+
+    const recovered = [];
+    const skipped = [];
+    for (const s of sessions) {
+      if (s.status !== 'complete' || s.payment_status !== 'paid') {
+        skipped.push({ id: s.id, reason: `status=${s.status}/payment=${s.payment_status}` });
+        continue;
+      }
+      const [exists] = await pool.execute('SELECT id FROM orders WHERE stripe_session_id = ?', [s.id]);
+      if (exists.length) {
+        skipped.push({ id: s.id, reason: 'ya existe en DB' });
+        continue;
+      }
+
+      const items = [];
+      try {
+        const parsed = JSON.parse(s.metadata?.items || '[]');
+        for (const i of parsed) {
+          const [prows] = await pool.execute('SELECT name, price_cents FROM products WHERE slug = ?', [i.s]);
+          items.push({
+            slug: i.s,
+            name: prows[0]?.name || i.s,
+            price_cents: prows[0]?.price_cents || 0,
+            quantity: i.q
+          });
+        }
+      } catch {}
+
+      const record = {
+        stripe_session_id: s.id,
+        stripe_payment_intent: s.payment_intent || null,
+        amount_total_cents: s.amount_total || 0,
+        currency: (s.currency || 'usd').toLowerCase(),
+        customer_email: s.customer_details?.email || null,
+        customer_name: s.customer_details?.name || null,
+        items,
+        shipping: s.shipping_details || null,
+        created_at: new Date(s.created * 1000).toISOString().slice(0, 19).replace('T', ' ')
+      };
+
+      if (!dryRun) {
+        await pool.execute(
+          `INSERT INTO orders
+            (stripe_session_id, stripe_payment_intent, amount_total_cents, currency, status, items_json, customer_email, customer_name, shipping_json, created_at)
+           VALUES (?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?)`,
+          [
+            record.stripe_session_id,
+            record.stripe_payment_intent,
+            record.amount_total_cents,
+            record.currency,
+            JSON.stringify(record.items),
+            record.customer_email,
+            record.customer_name,
+            JSON.stringify(record.shipping || {}),
+            record.created_at
+          ]
+        );
+      }
+      recovered.push(record);
+    }
+
+    res.json({ success: true, data: { dry_run: dryRun, recovered, skipped } });
   } catch (err) { next(err); }
 });
 
