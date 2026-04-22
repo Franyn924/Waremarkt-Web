@@ -188,12 +188,19 @@
       <div x-show="tab==='orders'">
         <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
           <h1 class="font-display font-bold text-3xl text-navy">Pedidos</h1>
-          <button @click="backfillStripe()" :disabled="backfillLoading" class="border-2 border-navy/20 hover:border-azul hover:text-azul text-navy font-semibold px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
-            <i data-lucide="refresh-cw" class="w-4 h-4" :class="backfillLoading ? 'animate-spin' : ''"></i>
-            <span x-text="backfillLoading ? 'Recuperando…' : 'Recuperar ventas de Stripe'"></span>
-          </button>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button @click="sendDailyReport()" :disabled="reportLoading" class="border-2 border-navy/20 hover:border-azul hover:text-azul text-navy font-semibold px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
+              <i data-lucide="mail" class="w-4 h-4" :class="reportLoading ? 'animate-pulse' : ''"></i>
+              <span x-text="reportLoading ? 'Enviando…' : 'Enviar resumen diario'"></span>
+            </button>
+            <button @click="backfillStripe()" :disabled="backfillLoading" class="border-2 border-navy/20 hover:border-azul hover:text-azul text-navy font-semibold px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
+              <i data-lucide="refresh-cw" class="w-4 h-4" :class="backfillLoading ? 'animate-spin' : ''"></i>
+              <span x-text="backfillLoading ? 'Recuperando…' : 'Recuperar ventas de Stripe'"></span>
+            </button>
+          </div>
         </div>
         <div x-show="backfillMsg" x-cloak class="mb-4 px-4 py-3 rounded-xl text-sm" :class="backfillOk ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'" x-text="backfillMsg"></div>
+        <div x-show="reportMsg" x-cloak class="mb-4 px-4 py-3 rounded-xl text-sm" :class="reportOk ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'" x-text="reportMsg"></div>
         <div class="bg-white rounded-2xl border border-navy/10 overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -716,6 +723,7 @@
       products: [], orders: [],
       categories: [],
       backfillLoading: false, backfillMsg: '', backfillOk: true,
+      reportLoading: false, reportMsg: '', reportOk: true,
       orderModalOpen: false, selectedOrder: null,
       modalOpen: false, editing: {}, priceDollars: 0, compareDollars: null,
       saving: false, formError: '',
@@ -797,6 +805,32 @@
         this.selectedOrder = o;
         this.orderModalOpen = true;
         this.$nextTick(() => lucide.createIcons());
+      },
+
+      async sendDailyReport() {
+        if (this.reportLoading) return;
+        this.reportLoading = true;
+        this.reportMsg = '';
+        try {
+          const r = await fetch(`${API}/admin/reports/daily/send`, {
+            method: 'POST',
+            headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+            body: '{}'
+          });
+          const j = await r.json();
+          if (!j.success) throw new Error(j.error || 'Error al enviar');
+          const s = j.data.summary || {};
+          this.reportOk = !!j.data.sent;
+          this.reportMsg = j.data.sent
+            ? `✓ Resumen enviado · ${s.date} · ${s.count} venta(s) · ${money(s.totalCents || 0)}`
+            : `No se envió: ${j.data.reason || 'motivo desconocido'}`;
+        } catch (e) {
+          this.reportOk = false;
+          this.reportMsg = `Error: ${e.message}`;
+        } finally {
+          this.reportLoading = false;
+          this.$nextTick(() => lucide.createIcons());
+        }
       },
 
       async backfillStripe() {
