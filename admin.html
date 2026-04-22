@@ -208,7 +208,7 @@
               </thead>
               <tbody>
                 <template x-for="o in orders" :key="o.id">
-                  <tr class="border-t border-navy/5">
+                  <tr class="border-t border-navy/5 hover:bg-azul/5 cursor-pointer transition" @click="openOrder(o)">
                     <td class="px-4 py-3 text-carbon/70" x-text="fmtDate(o.created_at)"></td>
                     <td class="px-4 py-3">
                       <div class="font-semibold text-navy" x-text="o.customer_name || '—'"></div>
@@ -595,6 +595,107 @@
     </div>
   </div>
 
+  <!-- Order detail modal -->
+  <div x-show="orderModalOpen" x-cloak @keydown.escape.window="orderModalOpen=false" class="fixed inset-0 bg-navy/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div @click.outside="orderModalOpen=false" class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl my-8" x-show="selectedOrder">
+      <div class="flex items-start justify-between p-6 border-b border-navy/10">
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold mb-1">Pedido</div>
+          <div class="font-display font-bold text-2xl text-navy font-mono" x-text="selectedOrder ? ('WM-' + String(selectedOrder.id).padStart(6, '0')) : ''"></div>
+          <div class="text-xs text-carbon/60 mt-1" x-text="selectedOrder ? fmtDate(selectedOrder.created_at) : ''"></div>
+        </div>
+        <div class="flex items-center gap-3">
+          <span x-show="selectedOrder" :class="selectedOrder && selectedOrder.status==='paid' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber/20 text-orange-700 border-orange-200'" class="text-xs font-bold px-3 py-1.5 rounded-full border uppercase" x-text="selectedOrder && selectedOrder.status==='paid' ? 'Pagado' : 'Pendiente'"></span>
+          <button @click="orderModalOpen=false" class="w-8 h-8 rounded-full hover:bg-navy/5 flex items-center justify-center">
+            <i data-lucide="x" class="w-5 h-5 text-carbon/60"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="p-6 space-y-6" x-show="selectedOrder">
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="p-4 rounded-xl bg-navy/5">
+            <div class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold mb-2">Cliente</div>
+            <div class="font-semibold text-navy text-sm" x-text="selectedOrder?.customer_name || '—'"></div>
+            <div class="text-sm text-carbon/80 mt-0.5" x-text="selectedOrder?.customer_email || '—'"></div>
+          </div>
+          <div class="p-4 rounded-xl bg-navy/5">
+            <div class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold mb-2">Dirección de envío</div>
+            <div class="text-sm text-navy leading-relaxed" x-show="selectedOrder && selectedOrder.shipping && selectedOrder.shipping.address">
+              <div class="font-semibold" x-text="selectedOrder?.shipping?.name || ''"></div>
+              <div x-text="selectedOrder?.shipping?.address?.line1 || ''"></div>
+              <div x-show="selectedOrder?.shipping?.address?.line2" x-text="selectedOrder?.shipping?.address?.line2"></div>
+              <div><span x-text="selectedOrder?.shipping?.address?.city || ''"></span><span x-show="selectedOrder?.shipping?.address?.state">, <span x-text="selectedOrder?.shipping?.address?.state"></span></span> <span x-text="selectedOrder?.shipping?.address?.postal_code || ''"></span></div>
+              <div x-text="selectedOrder?.shipping?.address?.country || ''"></div>
+            </div>
+            <div class="text-sm text-carbon/50 italic" x-show="!(selectedOrder && selectedOrder.shipping && selectedOrder.shipping.address)">Sin dirección registrada</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold mb-3">Productos</div>
+          <div class="border border-navy/10 rounded-xl overflow-hidden">
+            <table class="w-full text-sm">
+              <thead class="bg-navy/5 text-carbon/70 uppercase text-[10px] tracking-wider">
+                <tr>
+                  <th class="text-left font-semibold px-4 py-2.5">Producto</th>
+                  <th class="text-center font-semibold px-3 py-2.5 w-16">Cant.</th>
+                  <th class="text-right font-semibold px-3 py-2.5 w-24">Unit.</th>
+                  <th class="text-right font-semibold px-4 py-2.5 w-24">Importe</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="(it, idx) in (selectedOrder?.items || [])" :key="idx">
+                  <tr class="border-t border-navy/5">
+                    <td class="px-4 py-3">
+                      <div class="font-semibold text-navy" x-text="it.name"></div>
+                      <div class="text-[11px] text-carbon/50 font-mono" x-show="it.sku">SKU: <span x-text="it.sku"></span></div>
+                      <div class="text-[11px] text-carbon/50" x-show="!it.sku && it.slug" x-text="it.slug"></div>
+                    </td>
+                    <td class="px-3 py-3 text-center text-carbon/80" x-text="it.quantity"></td>
+                    <td class="px-3 py-3 text-right text-carbon/80" x-text="money(it.price_cents)"></td>
+                    <td class="px-4 py-3 text-right font-semibold text-navy" x-text="money((it.price_cents||0) * (it.quantity||0))"></td>
+                  </tr>
+                </template>
+                <tr x-show="!(selectedOrder?.items?.length)" class="border-t border-navy/5">
+                  <td colspan="4" class="px-4 py-6 text-center text-carbon/50 text-sm">Sin productos</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="border-t border-navy/10 pt-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold" x-text="selectedOrder?.status==='paid' ? 'Monto pagado' : 'Monto pendiente'"></div>
+              <div class="text-[11px] text-carbon/50 mt-0.5" x-show="selectedOrder?.currency" x-text="'Moneda: ' + (selectedOrder?.currency || '').toUpperCase()"></div>
+            </div>
+            <div :class="selectedOrder?.status==='paid' ? 'text-green-700' : 'text-orange-700'" class="font-display font-bold text-3xl" x-text="money(selectedOrder?.amount_total_cents || 0)"></div>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-3 text-xs">
+          <div class="p-3 rounded-lg bg-navy/5" x-show="selectedOrder?.stripe_session_id">
+            <div class="text-[10px] uppercase tracking-wider text-carbon/60 font-semibold mb-1">Stripe Session</div>
+            <div class="font-mono text-carbon/80 break-all" x-text="selectedOrder?.stripe_session_id"></div>
+          </div>
+          <div class="p-3 rounded-lg bg-navy/5" x-show="selectedOrder?.stripe_payment_intent">
+            <div class="text-[10px] uppercase tracking-wider text-carbon/60 font-semibold mb-1">Payment Intent</div>
+            <div class="font-mono text-carbon/80 break-all" x-text="selectedOrder?.stripe_payment_intent"></div>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-4 border-t border-navy/10">
+          <a x-show="selectedOrder?.customer_email" :href="'mailto:' + (selectedOrder?.customer_email || '')" class="inline-flex items-center gap-2 border-2 border-navy/20 hover:border-navy text-navy font-semibold px-4 py-2 rounded-full text-sm">
+            <i data-lucide="mail" class="w-4 h-4"></i> Contactar cliente
+          </a>
+          <button type="button" @click="orderModalOpen=false" class="btn-primary text-navy-deep font-bold px-6 py-2 rounded-full text-sm">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div x-data="{show:false,msg:''}" @admin-toast.window="msg=$event.detail;show=true;setTimeout(()=>show=false,2500)"
        x-show="show" x-cloak x-transition
@@ -615,6 +716,7 @@
       products: [], orders: [],
       categories: [],
       backfillLoading: false, backfillMsg: '', backfillOk: true,
+      orderModalOpen: false, selectedOrder: null,
       modalOpen: false, editing: {}, priceDollars: 0, compareDollars: null,
       saving: false, formError: '',
       upcCode: '', upcLoading: false, upcError: '', upcResults: [],
@@ -688,6 +790,12 @@
         const r = await fetch(`${API}/admin/orders`, { headers: this.authHeaders() });
         const j = await r.json();
         this.orders = j.success ? j.data : [];
+        this.$nextTick(() => lucide.createIcons());
+      },
+
+      openOrder(o) {
+        this.selectedOrder = o;
+        this.orderModalOpen = true;
         this.$nextTick(() => lucide.createIcons());
       },
 

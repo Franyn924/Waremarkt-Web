@@ -6,9 +6,12 @@ const {
   SMTP_USER,
   SMTP_PASS,
   SMTP_FROM,
+  ADMIN_NOTIFY_EMAIL,
   FRONTEND_URL,
   WHATSAPP_NUMBER
 } = process.env;
+
+export const ADMIN_EMAIL_TO = ADMIN_NOTIFY_EMAIL || SMTP_USER;
 
 export const MAILER_ENABLED = !!(SMTP_HOST && SMTP_USER && SMTP_PASS);
 
@@ -149,6 +152,196 @@ function renderText({ orderNumber, items, totalCents, currency, shippingText }) 
     ``,
     `— Waremarkt · ${FRONTEND_URL || 'waremarkt.com'}`
   ].filter(Boolean).join('\n');
+}
+
+export async function sendAdminOrderNotification({ order, stripeSession }) {
+  if (!MAILER_ENABLED) return { sent: false, reason: 'SMTP no configurado' };
+  if (!ADMIN_EMAIL_TO) return { sent: false, reason: 'sin ADMIN_NOTIFY_EMAIL' };
+
+  const items = Array.isArray(order.items) ? order.items : [];
+  const currency = order.currency || stripeSession.currency || 'usd';
+  const totalCents = order.amount_total_cents || stripeSession.amount_total || 0;
+  const orderNumber = `WM-${String(order.id || '').padStart(6, '0')}`;
+  const email = stripeSession.customer_details?.email || order.customer_email || '—';
+  const name = stripeSession.customer_details?.name || order.customer_name || '—';
+  const ship = stripeSession.shipping_details || order.shipping;
+  const shippingHtml = formatShipping(ship);
+  const adminUrl = `${FRONTEND_URL || 'https://waremarkt.com'}/admin.html`;
+
+  const itemsHtml = items.map(i => `
+    <tr>
+      <td style="padding:8px 0;border-bottom:1px solid #eef2f6;color:#0A2E50;font-size:13px;">
+        ${escape(i.name)} ${i.sku ? `<span style="color:#6b7280;font-size:11px;">(${escape(i.sku)})</span>` : ''}
+      </td>
+      <td align="center" style="padding:8px 0;border-bottom:1px solid #eef2f6;color:#343A40;font-size:13px;">${i.quantity}</td>
+      <td align="right" style="padding:8px 0;border-bottom:1px solid #eef2f6;color:#0A2E50;font-weight:600;font-size:13px;">${money(i.price_cents * i.quantity, currency)}</td>
+    </tr>
+  `).join('');
+
+  const html = `<!DOCTYPE html>
+<html><body style="margin:0;padding:24px;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="560" cellpadding="0" cellspacing="0" align="center" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(10,46,80,0.06);">
+    <tr><td style="background:#0A2E50;padding:20px 24px;color:#fff;">
+      <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#FFC107;margin-bottom:4px;">Nueva venta</div>
+      <div style="font-size:22px;font-weight:700;">${money(totalCents, currency)} · ${items.length} producto${items.length !== 1 ? 's' : ''}</div>
+    </td></tr>
+    <tr><td style="padding:24px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+        <tr><td style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;padding-bottom:4px;">Pedido</td>
+            <td align="right" style="font-family:monospace;font-size:13px;color:#0A2E50;font-weight:600;">${escape(orderNumber)}</td></tr>
+        <tr><td style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;padding:6px 0 4px;">Cliente</td>
+            <td align="right" style="font-size:13px;color:#0A2E50;">${escape(name)}</td></tr>
+        <tr><td colspan="2" align="right" style="font-size:12px;color:#6b7280;">${escape(email)}</td></tr>
+      </table>
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <thead><tr>
+          <th align="left" style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;padding-bottom:6px;border-bottom:2px solid #0A2E50;">Producto</th>
+          <th align="center" style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;padding-bottom:6px;border-bottom:2px solid #0A2E50;width:50px;">Cant.</th>
+          <th align="right" style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;padding-bottom:6px;border-bottom:2px solid #0A2E50;width:90px;">Importe</th>
+        </tr></thead>
+        <tbody>${itemsHtml}</tbody>
+      </table>
+      ${shippingHtml ? `
+      <div style="margin-top:20px;padding:14px 16px;background:#f6f8fb;border-radius:8px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:6px;">Envío</div>
+        <div style="color:#343A40;font-size:13px;line-height:1.5;">${shippingHtml}</div>
+      </div>` : ''}
+      <div style="margin-top:20px;text-align:center;">
+        <a href="${adminUrl}" style="display:inline-block;background:linear-gradient(135deg,#FFC107 0%,#FB8F1A 100%);color:#07213A;text-decoration:none;font-weight:700;font-size:13px;padding:10px 22px;border-radius:999px;">Ver en el panel</a>
+      </div>
+    </td></tr>
+  </table>
+</body></html>`;
+
+  const text = [
+    `Nueva venta en Waremarkt`,
+    ``,
+    `Pedido: ${orderNumber}`,
+    `Total: ${money(totalCents, currency)}`,
+    `Cliente: ${name} <${email}>`,
+    ``,
+    `Items:`,
+    ...items.map(i => `  • ${i.quantity}× ${i.name} ${i.sku ? '(' + i.sku + ')' : ''} = ${money(i.price_cents * i.quantity, currency)}`),
+    ``,
+    `Panel: ${adminUrl}`
+  ].join('\n');
+
+  try {
+    const info = await transporter.sendMail({
+      from: SMTP_FROM || SMTP_USER,
+      to: ADMIN_EMAIL_TO,
+      subject: `🔔 Nueva venta ${orderNumber} · ${money(totalCents, currency)}`,
+      text,
+      html
+    });
+    return { sent: true, messageId: info.messageId };
+  } catch (err) {
+    console.error('[mailer] Error notificando admin:', err.message);
+    return { sent: false, reason: err.message };
+  }
+}
+
+export async function sendDailySalesReport({ dateLabel, orders, totalCents, currency, topItems }) {
+  if (!MAILER_ENABLED) return { sent: false, reason: 'SMTP no configurado' };
+  if (!ADMIN_EMAIL_TO) return { sent: false, reason: 'sin ADMIN_NOTIFY_EMAIL' };
+
+  const count = orders.length;
+  const adminUrl = `${FRONTEND_URL || 'https://waremarkt.com'}/admin.html`;
+
+  const ordersHtml = orders.map(o => `
+    <tr>
+      <td style="padding:8px 0;border-bottom:1px solid #eef2f6;font-family:monospace;font-size:12px;color:#0A2E50;">WM-${String(o.id).padStart(6, '0')}</td>
+      <td style="padding:8px 0;border-bottom:1px solid #eef2f6;font-size:12px;color:#343A40;">${escape(o.customer_name || o.customer_email || '—')}</td>
+      <td align="right" style="padding:8px 0;border-bottom:1px solid #eef2f6;font-size:12px;color:#0A2E50;font-weight:600;">${money(o.amount_total_cents, o.currency)}</td>
+    </tr>
+  `).join('');
+
+  const topHtml = (topItems || []).slice(0, 5).map((t, idx) => `
+    <tr>
+      <td style="padding:6px 0;color:#6b7280;font-size:12px;width:24px;">${idx + 1}.</td>
+      <td style="padding:6px 0;color:#0A2E50;font-size:13px;">${escape(t.name)}</td>
+      <td align="right" style="padding:6px 0;color:#343A40;font-size:12px;">${t.qty} ud.</td>
+    </tr>
+  `).join('');
+
+  const html = `<!DOCTYPE html>
+<html><body style="margin:0;padding:24px;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="600" cellpadding="0" cellspacing="0" align="center" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(10,46,80,0.06);">
+    <tr><td style="background:linear-gradient(135deg,#0A2E50 0%,#173F69 100%);padding:24px;color:#fff;">
+      <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.6);">Resumen diario</div>
+      <div style="font-size:20px;font-weight:700;margin-top:4px;">${escape(dateLabel)}</div>
+    </td></tr>
+    <tr><td style="padding:28px 24px 8px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td width="50%" style="padding-right:8px;">
+            <div style="background:#f6f8fb;border-radius:10px;padding:16px;">
+              <div style="font-size:11px;text-transform:uppercase;color:#6b7280;letter-spacing:1px;">Ventas</div>
+              <div style="font-size:28px;font-weight:700;color:#0A2E50;margin-top:4px;">${count}</div>
+            </div>
+          </td>
+          <td width="50%" style="padding-left:8px;">
+            <div style="background:linear-gradient(135deg,#FFC107 0%,#FB8F1A 100%);border-radius:10px;padding:16px;">
+              <div style="font-size:11px;text-transform:uppercase;color:#07213A;letter-spacing:1px;opacity:0.8;">Ingresos</div>
+              <div style="font-size:24px;font-weight:700;color:#07213A;margin-top:4px;">${money(totalCents, currency)}</div>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+
+    ${count > 0 ? `
+    <tr><td style="padding:24px;">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:10px;font-weight:600;">Pedidos del día</div>
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <thead><tr>
+          <th align="left" style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;padding-bottom:6px;border-bottom:2px solid #0A2E50;">N°</th>
+          <th align="left" style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;padding-bottom:6px;border-bottom:2px solid #0A2E50;">Cliente</th>
+          <th align="right" style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;padding-bottom:6px;border-bottom:2px solid #0A2E50;">Total</th>
+        </tr></thead>
+        <tbody>${ordersHtml}</tbody>
+      </table>
+    </td></tr>` : `
+    <tr><td style="padding:32px 24px;text-align:center;color:#6b7280;font-size:14px;">Sin ventas hoy. 💤</td></tr>`}
+
+    ${topHtml ? `
+    <tr><td style="padding:0 24px 24px;">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:10px;font-weight:600;">Productos más vendidos</div>
+      <table width="100%" cellpadding="0" cellspacing="0">${topHtml}</table>
+    </td></tr>` : ''}
+
+    <tr><td style="padding:16px 24px;background:#f6f8fb;text-align:center;">
+      <a href="${adminUrl}" style="color:#0A2E50;text-decoration:none;font-weight:600;font-size:13px;">Abrir panel →</a>
+    </td></tr>
+  </table>
+</body></html>`;
+
+  const text = [
+    `Resumen diario Waremarkt — ${dateLabel}`,
+    ``,
+    `Ventas: ${count}`,
+    `Ingresos: ${money(totalCents, currency)}`,
+    ``,
+    count > 0 ? 'Pedidos:' : 'Sin ventas hoy.',
+    ...orders.map(o => `  • WM-${String(o.id).padStart(6, '0')} — ${o.customer_name || o.customer_email || '—'} — ${money(o.amount_total_cents, o.currency)}`),
+    ``,
+    topItems && topItems.length ? 'Top productos:' : '',
+    ...(topItems || []).slice(0, 5).map((t, i) => `  ${i + 1}. ${t.name} — ${t.qty} ud.`)
+  ].filter(Boolean).join('\n');
+
+  try {
+    const info = await transporter.sendMail({
+      from: SMTP_FROM || SMTP_USER,
+      to: ADMIN_EMAIL_TO,
+      subject: `📊 Resumen Waremarkt — ${dateLabel} · ${count} venta${count !== 1 ? 's' : ''} · ${money(totalCents, currency)}`,
+      text,
+      html
+    });
+    return { sent: true, messageId: info.messageId };
+  } catch (err) {
+    console.error('[mailer] Error enviando resumen diario:', err.message);
+    return { sent: false, reason: err.message };
+  }
 }
 
 export async function sendOrderConfirmation({ order, stripeSession }) {

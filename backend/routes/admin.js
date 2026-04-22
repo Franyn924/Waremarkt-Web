@@ -7,6 +7,8 @@ import { v2 as cloudinary } from 'cloudinary';
 import Stripe from 'stripe';
 import { pool } from '../db/schema.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { buildDailyReport } from '../services/dailyReport.js';
+import { sendDailySalesReport } from '../services/mailer.js';
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -545,6 +547,16 @@ adminRouter.post('/orders/backfill-stripe', async (req, res, next) => {
     }
 
     res.json({ success: true, data: { dry_run: dryRun, recovered, skipped } });
+  } catch (err) { next(err); }
+});
+
+// Dispara el reporte diario manualmente (test). Body opcional: { date: 'YYYY-MM-DD' }
+adminRouter.post('/reports/daily/send', async (req, res, next) => {
+  try {
+    const d = req.body?.date ? new Date(req.body.date + 'T12:00:00Z') : new Date();
+    const report = await buildDailyReport(d);
+    const r = await sendDailySalesReport(report);
+    res.json({ success: true, data: { ...r, summary: { count: report.orders.length, totalCents: report.totalCents, date: report.dateLabel } } });
   } catch (err) { next(err); }
 });
 

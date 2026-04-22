@@ -1,7 +1,7 @@
 import { Router, raw } from 'express';
 import Stripe from 'stripe';
 import { pool } from '../db/schema.js';
-import { sendOrderConfirmation } from '../services/mailer.js';
+import { sendOrderConfirmation, sendAdminOrderNotification } from '../services/mailer.js';
 
 export const webhookRouter = Router();
 
@@ -69,7 +69,7 @@ webhookRouter.post('/', raw({ type: 'application/json' }), async (req, res) => {
         }
         let shippingParsed = null;
         try { shippingParsed = JSON.parse(o.shipping_json || 'null'); } catch {}
-        sendOrderConfirmation({
+        const orderPayload = {
           order: {
             id: o.id,
             amount_total_cents: o.amount_total_cents,
@@ -80,7 +80,9 @@ webhookRouter.post('/', raw({ type: 'application/json' }), async (req, res) => {
             shipping: shippingParsed
           },
           stripeSession: s
-        }).catch(err => console.error('[webhook] mail error:', err.message));
+        };
+        sendOrderConfirmation(orderPayload).catch(err => console.error('[webhook] customer mail error:', err.message));
+        sendAdminOrderNotification(orderPayload).catch(err => console.error('[webhook] admin mail error:', err.message));
       }
     } catch (e) {
       console.error('[webhook] DB error:', e.message);
