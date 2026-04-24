@@ -59,6 +59,22 @@ function absolutizeUrl(u, req) {
   return base.replace(/\/$/, '') + (u.startsWith('/') ? u : '/' + u);
 }
 
+// Inserta f_auto,q_auto y resize en URLs /image/upload/ de Cloudinary.
+function cldUrl(url, opts = {}) {
+  if (!url || typeof url !== 'string') return url;
+  const m = url.match(/^(https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.+)$/);
+  if (!m) return url;
+  const first = m[2].split('/')[0];
+  if (/(^|,)(f_auto|q_auto|w_\d+|c_[a-z]+)(,|$)/.test(first)) return url;
+  const parts = [];
+  if (opts.w) parts.push(`w_${opts.w}`);
+  if (opts.h) parts.push(`h_${opts.h}`);
+  if (opts.crop) parts.push(`c_${opts.crop}`);
+  parts.push(`q_${opts.q || 'auto'}`);
+  parts.push(`f_${opts.f || 'auto'}`);
+  return m[1] + parts.join(',') + '/' + m[2];
+}
+
 async function productoHandler(req, res, next) {
   try {
     let html = await fs.readFile(PRODUCTO_HTML_PATH, 'utf8');
@@ -88,7 +104,7 @@ async function productoHandler(req, res, next) {
             if (first) img = first.url;
           } catch {}
         }
-        if (img) image = absolutizeUrl(img, req);
+        if (img) image = absolutizeUrl(cldUrl(img, { w: 1200, crop: 'fill' }), req);
       }
     }
 

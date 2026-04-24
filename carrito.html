@@ -64,7 +64,7 @@
           <div class="bg-white rounded-2xl border border-navy/10 p-4 lg:p-5 flex gap-4 items-center">
             <div class="w-20 h-20 lg:w-24 lg:h-24 rounded-xl bg-gradient-to-br from-navy/5 to-azul/10 flex items-center justify-center flex-shrink-0 relative overflow-hidden">
               <i :data-lucide="item.icon || 'package'" class="w-10 h-10 text-navy/40"></i>
-              <img x-show="item.image_url" :src="item.image_url" :alt="item.name" class="absolute inset-0 w-full h-full object-cover" @error="item.image_url = ''">
+              <img x-show="item.image_url" :src="cldUrl(item.image_url, { w: 200, crop: 'fill' })" :alt="item.name" loading="lazy" class="absolute inset-0 w-full h-full object-cover" @error="item.image_url = ''">
             </div>
             <div class="flex-1 min-w-0">
               <div class="text-xs text-carbon/60 uppercase tracking-wider" x-text="item.brand || ''"></div>

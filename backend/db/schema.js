@@ -117,6 +117,7 @@ export async function initDb() {
   await ensureColumn('categories', 'parent_id', 'INT NULL');
   await ensureColumn('products', 'sku', 'VARCHAR(80) NULL');
   await ensureIndex('products', 'idx_products_sku', 'sku');
+  await ensureColumn('products', 'cost_cents', 'INT NULL');
 
   // Seed categorías si está vacía
   const [catRows] = await pool.query('SELECT COUNT(*) AS n FROM categories');

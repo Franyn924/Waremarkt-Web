@@ -8,7 +8,7 @@ import Stripe from 'stripe';
 import { pool } from '../db/schema.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { buildDailyReport } from '../services/dailyReport.js';
-import { sendDailySalesReport } from '../services/mailer.js';
+import { sendDailySalesReport, sendRaw, invalidateMailerCache } from '../services/mailer.js';
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -145,6 +145,9 @@ async function sanitize(body) {
     description: String(body.description || '').trim() || null,
     price_cents: Math.round(price),
     compare_at_cents: body.compare_at_cents ? Math.round(Number(body.compare_at_cents)) : null,
+    cost_cents: body.cost_cents != null && body.cost_cents !== '' && Number.isFinite(Number(body.cost_cents))
+      ? Math.max(0, Math.round(Number(body.cost_cents)))
+      : null,
     stock: Number.isFinite(Number(body.stock)) ? Math.max(0, Math.round(Number(body.stock))) : 0,
     icon: String(body.icon || '').trim() || 'package',
     image_url,
@@ -159,9 +162,9 @@ adminRouter.post('/products', async (req, res, next) => {
   try {
     const p = await sanitize(req.body);
     const [result] = await pool.execute(
-      `INSERT INTO products (slug, name, sku, category, brand, description, price_cents, compare_at_cents, stock, icon, image_url, media_json, badge, featured, active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [p.slug, p.name, p.sku, p.category, p.brand, p.description, p.price_cents, p.compare_at_cents, p.stock, p.icon, p.image_url, p.media_json, p.badge, p.featured, p.active]
+      `INSERT INTO products (slug, name, sku, category, brand, description, price_cents, compare_at_cents, cost_cents, stock, icon, image_url, media_json, badge, featured, active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [p.slug, p.name, p.sku, p.category, p.brand, p.description, p.price_cents, p.compare_at_cents, p.cost_cents, p.stock, p.icon, p.image_url, p.media_json, p.badge, p.featured, p.active]
     );
     const [rows] = await pool.execute('SELECT * FROM products WHERE id = ?', [result.insertId]);
     res.status(201).json({ success: true, data: rows[0] });
@@ -181,10 +184,10 @@ adminRouter.put('/products/:id', async (req, res, next) => {
     await pool.execute(
       `UPDATE products SET
          slug=?, name=?, sku=?, category=?, brand=?, description=?,
-         price_cents=?, compare_at_cents=?, stock=?,
+         price_cents=?, compare_at_cents=?, cost_cents=?, stock=?,
          icon=?, image_url=?, media_json=?, badge=?, featured=?, active=?
        WHERE id=?`,
-      [p.slug, p.name, p.sku, p.category, p.brand, p.description, p.price_cents, p.compare_at_cents, p.stock, p.icon, p.image_url, p.media_json, p.badge, p.featured, p.active, Number(req.params.id)]
+      [p.slug, p.name, p.sku, p.category, p.brand, p.description, p.price_cents, p.compare_at_cents, p.cost_cents, p.stock, p.icon, p.image_url, p.media_json, p.badge, p.featured, p.active, Number(req.params.id)]
     );
     const [rows] = await pool.execute('SELECT * FROM products WHERE id = ?', [req.params.id]);
     res.json({ success: true, data: rows[0] });
@@ -418,8 +421,12 @@ const ALLOWED_SETTING_KEYS = new Set([
   'currency', 'shipping_flat_cents',
   'tax_enabled', 'tax_behavior',
   'checkout_success_url', 'checkout_cancel_url',
-  'whatsapp_number'
+  'whatsapp_number',
+  'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from',
+  'admin_notify_email'
 ]);
+
+const SMTP_KEYS = new Set(['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'admin_notify_email']);
 
 adminRouter.get('/settings', async (req, res, next) => {
   try {
@@ -431,11 +438,13 @@ adminRouter.get('/settings', async (req, res, next) => {
 adminRouter.put('/settings', async (req, res, next) => {
   try {
     const body = req.body || {};
+    let touchedSmtp = false;
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
       for (const [key, value] of Object.entries(body)) {
         if (!ALLOWED_SETTING_KEYS.has(key)) continue;
+        if (SMTP_KEYS.has(key)) touchedSmtp = true;
         await conn.execute(
           `INSERT INTO settings (\`key\`, value) VALUES (?, ?)
            ON DUPLICATE KEY UPDATE value = VALUES(value)`,
@@ -449,8 +458,37 @@ adminRouter.put('/settings', async (req, res, next) => {
     } finally {
       conn.release();
     }
+    if (touchedSmtp) invalidateMailerCache();
     const [rows] = await pool.query('SELECT `key`, value FROM settings');
     res.json({ success: true, data: Object.fromEntries(rows.map(r => [r.key, r.value])) });
+  } catch (err) { next(err); }
+});
+
+// Envía un correo de prueba con la config SMTP actual (lee desde DB, sin cache).
+adminRouter.post('/settings/smtp-test', async (req, res, next) => {
+  try {
+    const to = String(req.body?.to || '').trim();
+    let destination = to;
+    if (!destination) {
+      const [rows] = await pool.query(
+        "SELECT value FROM settings WHERE `key` IN ('admin_notify_email','smtp_user') ORDER BY FIELD(`key`,'admin_notify_email','smtp_user') LIMIT 1"
+      );
+      destination = rows[0]?.value || process.env.ADMIN_NOTIFY_EMAIL || process.env.SMTP_USER || '';
+    }
+    if (!destination) return res.status(400).json({ success: false, error: 'No hay destinatario. Configurá admin_notify_email o pasá "to".' });
+    const result = await sendRaw({
+      to: destination,
+      subject: '✅ Prueba SMTP — Waremarkt',
+      text: 'Este es un correo de prueba enviado desde el panel de administración de Waremarkt. Si lo recibiste, la configuración SMTP es correcta.',
+      html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:24px;background:#f6f8fb;">
+        <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:28px;box-shadow:0 4px 12px rgba(10,46,80,0.06);">
+          <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#FFC107;font-weight:600;">Prueba SMTP</div>
+          <h1 style="margin:6px 0 12px;color:#0A2E50;font-size:22px;">Configuración correcta ✅</h1>
+          <p style="color:#6b7280;font-size:14px;line-height:1.6;">Este es un correo de prueba enviado desde el panel de administración de Waremarkt. Si lo recibiste, la configuración SMTP está funcionando.</p>
+        </div>
+      </div>`
+    }, { forceRefresh: true });
+    res.json({ success: result.sent, data: result });
   } catch (err) { next(err); }
 });
 

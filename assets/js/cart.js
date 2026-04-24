@@ -90,5 +90,26 @@
     return json.success ? json.data : null;
   }
 
-  global.WM = { cart, money, fetchProducts, fetchProduct, API };
+  // Cloudinary URL transformer — inyecta f_auto,q_auto + resize en URLs /image/upload/
+  // Idempotente: si la URL ya tiene un segmento de transformación, lo deja como está.
+  function cldUrl(url, opts = {}) {
+    if (!url || typeof url !== 'string') return url;
+    const m = url.match(/^(https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.+)$/);
+    if (!m) return url;
+    const rest = m[2];
+    const first = rest.split('/')[0];
+    if (/(^|,)(f_auto|q_auto|w_\d+|c_[a-z]+)(,|$)/.test(first)) return url;
+    const parts = [];
+    if (opts.w) parts.push(`w_${opts.w}`);
+    if (opts.h) parts.push(`h_${opts.h}`);
+    if (opts.crop) parts.push(`c_${opts.crop}`);
+    if (opts.gravity) parts.push(`g_${opts.gravity}`);
+    parts.push(`q_${opts.q || 'auto'}`);
+    parts.push(`f_${opts.f || 'auto'}`);
+    if (opts.dpr) parts.push(`dpr_${opts.dpr}`);
+    return m[1] + parts.join(',') + '/' + rest;
+  }
+
+  global.WM = { cart, money, fetchProducts, fetchProduct, cldUrl, API };
+  global.cldUrl = cldUrl;
 })(window);

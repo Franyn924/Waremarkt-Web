@@ -755,7 +755,7 @@
           <article class="card-hover bg-white rounded-2xl overflow-hidden border border-navy/10">
             <a href="producto.html?slug=${p.slug}" class="relative aspect-square bg-gradient-to-br from-navy/5 to-azul/10 flex items-center justify-center overflow-hidden block">
               <i data-lucide="${p.icon || 'package'}" class="w-20 h-20 text-navy/30"></i>
-              ${p.image_url ? `<img src="${p.image_url}" alt="${p.name}" class="absolute inset-0 w-full h-full object-cover" onerror="this.remove()">` : ''}
+              ${p.image_url ? `<img src="${cldUrl(p.image_url, { w: 600, crop: 'fill' })}" alt="${p.name}" loading="lazy" class="absolute inset-0 w-full h-full object-cover" onerror="this.remove()">` : ''}
               ${p.badge ? `<span class="absolute top-3 left-3 ${p.badge.startsWith('-') ? 'bg-naranja text-white' : 'bg-amber text-navy-deep'} text-xs font-bold px-2 py-1 rounded-md">${p.badge}</span>` : ''}
             </a>
             <div class="p-5">

@@ -1,28 +1,65 @@
 import nodemailer from 'nodemailer';
+import { getAllSettings } from '../db/schema.js';
 
-const {
-  SMTP_HOST,
-  SMTP_PORT = '465',
-  SMTP_USER,
-  SMTP_PASS,
-  SMTP_FROM,
-  ADMIN_NOTIFY_EMAIL,
-  FRONTEND_URL,
-  WHATSAPP_NUMBER
-} = process.env;
+const { FRONTEND_URL, WHATSAPP_NUMBER } = process.env;
 
-export const ADMIN_EMAIL_TO = ADMIN_NOTIFY_EMAIL || SMTP_USER;
+// Lee config SMTP desde la tabla settings (prioritaria) con fallback a env vars.
+async function loadMailConfig() {
+  let s = {};
+  try { s = await getAllSettings(); } catch {}
+  const host = s.smtp_host || process.env.SMTP_HOST || '';
+  const port = Number(s.smtp_port || process.env.SMTP_PORT || 465);
+  const user = s.smtp_user || process.env.SMTP_USER || '';
+  const pass = s.smtp_pass || process.env.SMTP_PASS || '';
+  const from = s.smtp_from || process.env.SMTP_FROM || user;
+  const adminTo = s.admin_notify_email || process.env.ADMIN_NOTIFY_EMAIL || user;
+  return {
+    host, port, user, pass, from,
+    adminTo,
+    enabled: !!(host && user && pass)
+  };
+}
 
-export const MAILER_ENABLED = !!(SMTP_HOST && SMTP_USER && SMTP_PASS);
+let cache = null;
+let cacheAt = 0;
+const CACHE_MS = 30_000;
+async function getMailConfig(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && cache && (now - cacheAt) < CACHE_MS) return cache;
+  cache = await loadMailConfig();
+  cacheAt = now;
+  return cache;
+}
 
-const transporter = MAILER_ENABLED
-  ? nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: Number(SMTP_PORT),
-      secure: Number(SMTP_PORT) === 465,
-      auth: { user: SMTP_USER, pass: SMTP_PASS }
-    })
-  : null;
+export function invalidateMailerCache() { cache = null; cacheAt = 0; }
+
+function buildTransporter(cfg) {
+  return nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.port === 465,
+    auth: { user: cfg.user, pass: cfg.pass }
+  });
+}
+
+export async function sendRaw(mailOptions, { forceRefresh = false } = {}) {
+  const cfg = await getMailConfig(forceRefresh);
+  if (!cfg.enabled) return { sent: false, reason: 'SMTP no configurado' };
+  try {
+    const info = await buildTransporter(cfg).sendMail({
+      from: cfg.from,
+      ...mailOptions
+    });
+    return { sent: true, messageId: info.messageId, config: { host: cfg.host, user: cfg.user } };
+  } catch (err) {
+    console.error('[mailer] sendRaw error:', err.message);
+    return { sent: false, reason: err.message };
+  }
+}
+
+export async function getAdminNotifyEmail() {
+  return (await getMailConfig()).adminTo;
+}
 
 function money(cents, currency = 'usd') {
   const amount = (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -148,15 +185,16 @@ function renderText({ orderNumber, items, totalCents, currency, shippingText }) 
     shippingText ? `\nEnvío a:\n${shippingText}` : '',
     ``,
     `Te avisaremos en cuanto tu pedido salga a despacho.`,
-    `Consultas: ${WHATSAPP_NUMBER ? 'WhatsApp +' + WHATSAPP_NUMBER : (SMTP_FROM || SMTP_USER)}`,
+    WHATSAPP_NUMBER ? `Consultas: WhatsApp +${WHATSAPP_NUMBER}` : '',
     ``,
     `— Waremarkt · ${FRONTEND_URL || 'waremarkt.com'}`
   ].filter(Boolean).join('\n');
 }
 
 export async function sendAdminOrderNotification({ order, stripeSession }) {
-  if (!MAILER_ENABLED) return { sent: false, reason: 'SMTP no configurado' };
-  if (!ADMIN_EMAIL_TO) return { sent: false, reason: 'sin ADMIN_NOTIFY_EMAIL' };
+  const cfg = await getMailConfig();
+  if (!cfg.enabled) return { sent: false, reason: 'SMTP no configurado' };
+  if (!cfg.adminTo) return { sent: false, reason: 'sin admin_notify_email' };
 
   const items = Array.isArray(order.items) ? order.items : [];
   const currency = order.currency || stripeSession.currency || 'usd';
@@ -226,24 +264,18 @@ export async function sendAdminOrderNotification({ order, stripeSession }) {
     `Panel: ${adminUrl}`
   ].join('\n');
 
-  try {
-    const info = await transporter.sendMail({
-      from: SMTP_FROM || SMTP_USER,
-      to: ADMIN_EMAIL_TO,
-      subject: `🔔 Nueva venta ${orderNumber} · ${money(totalCents, currency)}`,
-      text,
-      html
-    });
-    return { sent: true, messageId: info.messageId };
-  } catch (err) {
-    console.error('[mailer] Error notificando admin:', err.message);
-    return { sent: false, reason: err.message };
-  }
+  return sendRaw({
+    to: cfg.adminTo,
+    subject: `🔔 Nueva venta ${orderNumber} · ${money(totalCents, currency)}`,
+    text,
+    html
+  });
 }
 
 export async function sendDailySalesReport({ dateLabel, orders, totalCents, currency, topItems }) {
-  if (!MAILER_ENABLED) return { sent: false, reason: 'SMTP no configurado' };
-  if (!ADMIN_EMAIL_TO) return { sent: false, reason: 'sin ADMIN_NOTIFY_EMAIL' };
+  const cfg = await getMailConfig();
+  if (!cfg.enabled) return { sent: false, reason: 'SMTP no configurado' };
+  if (!cfg.adminTo) return { sent: false, reason: 'sin admin_notify_email' };
 
   const count = orders.length;
   const adminUrl = `${FRONTEND_URL || 'https://waremarkt.com'}/admin.html`;
@@ -329,26 +361,17 @@ export async function sendDailySalesReport({ dateLabel, orders, totalCents, curr
     ...(topItems || []).slice(0, 5).map((t, i) => `  ${i + 1}. ${t.name} — ${t.qty} ud.`)
   ].filter(Boolean).join('\n');
 
-  try {
-    const info = await transporter.sendMail({
-      from: SMTP_FROM || SMTP_USER,
-      to: ADMIN_EMAIL_TO,
-      subject: `📊 Resumen Waremarkt — ${dateLabel} · ${count} venta${count !== 1 ? 's' : ''} · ${money(totalCents, currency)}`,
-      text,
-      html
-    });
-    return { sent: true, messageId: info.messageId };
-  } catch (err) {
-    console.error('[mailer] Error enviando resumen diario:', err.message);
-    return { sent: false, reason: err.message };
-  }
+  return sendRaw({
+    to: cfg.adminTo,
+    subject: `📊 Resumen Waremarkt — ${dateLabel} · ${count} venta${count !== 1 ? 's' : ''} · ${money(totalCents, currency)}`,
+    text,
+    html
+  });
 }
 
 export async function sendOrderConfirmation({ order, stripeSession }) {
-  if (!MAILER_ENABLED) {
-    console.warn('[mailer] SMTP no configurado, skip envío de confirmación');
-    return { sent: false, reason: 'SMTP no configurado' };
-  }
+  const cfg = await getMailConfig();
+  if (!cfg.enabled) return { sent: false, reason: 'SMTP no configurado' };
 
   const to = stripeSession.customer_details?.email || order.customer_email;
   if (!to) return { sent: false, reason: 'sin email del cliente' };
@@ -371,17 +394,10 @@ export async function sendOrderConfirmation({ order, stripeSession }) {
   const html = renderHtml({ orderNumber, items, subtotalCents, shippingCents, totalCents, currency, customerName, shippingHtml });
   const text = renderText({ orderNumber, items, totalCents, currency, shippingText });
 
-  try {
-    const info = await transporter.sendMail({
-      from: SMTP_FROM || SMTP_USER,
-      to,
-      subject: `Confirmación de pedido ${orderNumber} — Waremarkt`,
-      text,
-      html
-    });
-    return { sent: true, messageId: info.messageId };
-  } catch (err) {
-    console.error('[mailer] Error enviando confirmación:', err.message);
-    return { sent: false, reason: err.message };
-  }
+  return sendRaw({
+    to,
+    subject: `Confirmación de pedido ${orderNumber} — Waremarkt`,
+    text,
+    html
+  });
 }

@@ -78,7 +78,7 @@
             <i :data-lucide="product.icon || 'package'" class="w-48 h-48 text-navy/30"></i>
           </template>
           <template x-if="currentMedia && currentMedia.type === 'image'">
-            <img :src="currentMedia.url" :alt="product?.name" class="absolute inset-0 w-full h-full object-cover" @error="mediaError($event)">
+            <img :src="cldUrl(currentMedia.url, { w: 1200, crop: 'fit' })" :alt="product?.name" class="absolute inset-0 w-full h-full object-cover" @error="mediaError($event)">
           </template>
           <template x-if="currentMedia && currentMedia.type === 'video'">
             <video :src="currentMedia.url" controls playsinline class="absolute inset-0 w-full h-full object-cover bg-black"></video>
@@ -89,7 +89,7 @@
           <template x-for="(m, i) in media" :key="i">
             <button type="button" @click="mediaIdx = i" :class="mediaIdx === i ? 'border-amber ring-2 ring-amber' : 'border-navy/10 hover:border-azul'" class="aspect-square rounded-lg overflow-hidden border-2 bg-white transition relative">
               <template x-if="m.type === 'image'">
-                <img :src="m.url" class="w-full h-full object-cover" onerror="this.style.display='none'">
+                <img :src="cldUrl(m.url, { w: 200, crop: 'fill' })" loading="lazy" class="w-full h-full object-cover" onerror="this.style.display='none'">
               </template>
               <template x-if="m.type === 'video'">
                 <div class="w-full h-full bg-navy/90 flex items-center justify-center">
