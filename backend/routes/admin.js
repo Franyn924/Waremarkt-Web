@@ -601,3 +601,189 @@ adminRouter.post('/reports/daily/send', async (req, res, next) => {
 function safeJson(s) {
   try { return s ? JSON.parse(s) : null; } catch { return null; }
 }
+
+// ==== SUPPLIERS ====
+
+function sanitizeSupplier(body) {
+  const name = String(body.name || '').trim();
+  if (!name) throw Object.assign(new Error('Nombre del proveedor requerido'), { statusCode: 400 });
+  const url = String(body.website || '').trim();
+  if (url && !/^https?:\/\//i.test(url)) {
+    throw Object.assign(new Error('Website debe empezar con http:// o https://'), { statusCode: 400 });
+  }
+  return {
+    name,
+    tax_id: String(body.tax_id || '').trim() || null,
+    contact: String(body.contact || '').trim() || null,
+    payment_terms: String(body.payment_terms || '').trim() || null,
+    notes: String(body.notes || '').trim() || null,
+    website: url || null,
+    email: String(body.email || '').trim() || null,
+    phone: String(body.phone || '').trim() || null,
+    country: String(body.country || '').trim() || null,
+    currency: String(body.currency || 'usd').trim().toLowerCase().slice(0, 8) || 'usd',
+    shipping_in_invoice: body.shipping_in_invoice === false || body.shipping_in_invoice === 0 ? 0 : 1
+  };
+}
+
+adminRouter.get('/suppliers', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT s.*,
+              (SELECT COUNT(*) FROM purchases p WHERE p.supplier_id = s.id) AS purchase_count,
+              (SELECT COALESCE(SUM(total_cents), 0) FROM purchases p WHERE p.supplier_id = s.id) AS total_spent_cents,
+              (SELECT MAX(issue_date) FROM purchases p WHERE p.supplier_id = s.id) AS last_purchase_date,
+              (SELECT COUNT(*) FROM purchases p WHERE p.supplier_id = s.id AND p.payment_status IN ('pendiente','parcial','vencido')) AS open_invoices
+         FROM suppliers s
+        ORDER BY s.name ASC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+adminRouter.get('/suppliers/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const [supRows] = await pool.execute('SELECT * FROM suppliers WHERE id = ?', [id]);
+    if (supRows.length === 0) return res.status(404).json({ success: false, error: 'Proveedor no encontrado' });
+    const supplier = supRows[0];
+
+    const [purchases] = await pool.execute(
+      `SELECT p.*, (SELECT COUNT(*) FROM purchase_items pi WHERE pi.purchase_id = p.id) AS items_count
+         FROM purchases p
+        WHERE p.supplier_id = ?
+        ORDER BY p.issue_date DESC, p.id DESC`,
+      [id]
+    );
+
+    const [products] = await pool.execute(
+      `SELECT DISTINCT pr.id, pr.slug, pr.name, pr.sku, pr.price_cents, pr.cost_cents, pr.stock, pr.active,
+              (SELECT MAX(p.issue_date) FROM purchases p
+                 JOIN purchase_items pi ON pi.purchase_id = p.id
+                WHERE p.supplier_id = ? AND pi.product_id = pr.id) AS last_purchase_date,
+              (SELECT SUM(pi.quantity) FROM purchases p
+                 JOIN purchase_items pi ON pi.purchase_id = p.id
+                WHERE p.supplier_id = ? AND pi.product_id = pr.id) AS total_purchased_qty
+         FROM products pr
+         JOIN purchase_items pi ON pi.product_id = pr.id
+         JOIN purchases p ON p.id = pi.purchase_id
+        WHERE p.supplier_id = ?
+        ORDER BY pr.name ASC`,
+      [id, id, id]
+    );
+
+    res.json({ success: true, data: { supplier, purchases, products } });
+  } catch (err) { next(err); }
+});
+
+adminRouter.post('/suppliers', async (req, res, next) => {
+  try {
+    const s = sanitizeSupplier(req.body);
+    const [result] = await pool.execute(
+      `INSERT INTO suppliers (name, tax_id, contact, payment_terms, notes, website, email, phone, country, currency, shipping_in_invoice)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [s.name, s.tax_id, s.contact, s.payment_terms, s.notes, s.website, s.email, s.phone, s.country, s.currency, s.shipping_in_invoice]
+    );
+    const [rows] = await pool.execute('SELECT * FROM suppliers WHERE id = ?', [result.insertId]);
+    res.status(201).json({ success: true, data: rows[0] });
+  } catch (e) {
+    if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, error: 'Ya existe un proveedor con ese nombre' });
+    next(e);
+  }
+});
+
+adminRouter.put('/suppliers/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const [exists] = await pool.execute('SELECT id FROM suppliers WHERE id = ?', [id]);
+    if (exists.length === 0) return res.status(404).json({ success: false, error: 'No encontrado' });
+    const s = sanitizeSupplier(req.body);
+    await pool.execute(
+      `UPDATE suppliers
+          SET name=?, tax_id=?, contact=?, payment_terms=?, notes=?,
+              website=?, email=?, phone=?, country=?, currency=?, shipping_in_invoice=?
+        WHERE id=?`,
+      [s.name, s.tax_id, s.contact, s.payment_terms, s.notes, s.website, s.email, s.phone, s.country, s.currency, s.shipping_in_invoice, id]
+    );
+    const [rows] = await pool.execute('SELECT * FROM suppliers WHERE id = ?', [id]);
+    res.json({ success: true, data: rows[0] });
+  } catch (e) {
+    if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, error: 'Ya existe un proveedor con ese nombre' });
+    next(e);
+  }
+});
+
+adminRouter.delete('/suppliers/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const [[{ n }]] = await pool.execute('SELECT COUNT(*) AS n FROM purchases WHERE supplier_id = ?', [id]);
+    if (n > 0) return res.status(409).json({ success: false, error: `No se puede eliminar: tiene ${n} factura(s) registrada(s)` });
+    const [result] = await pool.execute('DELETE FROM suppliers WHERE id = ?', [id]);
+    if (result.affectedRows === 0) return res.status(404).json({ success: false, error: 'No encontrado' });
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ==== PURCHASES (facturas de compra) ====
+
+const PAYMENT_STATUSES = new Set(['pendiente', 'parcial', 'pagado', 'vencido', 'en_disputa']);
+
+adminRouter.get('/purchases', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT p.*, s.name AS supplier_name,
+              (SELECT COUNT(*) FROM purchase_items pi WHERE pi.purchase_id = p.id) AS items_count,
+              CASE
+                WHEN p.payment_status = 'pagado' THEN NULL
+                WHEN p.due_date IS NULL THEN NULL
+                ELSE DATEDIFF(p.due_date, CURDATE())
+              END AS days_to_due
+         FROM purchases p
+         JOIN suppliers s ON s.id = p.supplier_id
+        ORDER BY p.issue_date DESC, p.id DESC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+adminRouter.get('/purchases/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const [pRows] = await pool.execute(
+      `SELECT p.*, s.name AS supplier_name, s.website AS supplier_website
+         FROM purchases p JOIN suppliers s ON s.id = p.supplier_id
+        WHERE p.id = ?`,
+      [id]
+    );
+    if (pRows.length === 0) return res.status(404).json({ success: false, error: 'Factura no encontrada' });
+
+    const [items] = await pool.execute(
+      `SELECT pi.*, pr.slug AS product_slug, pr.name AS product_name, pr.sku AS product_sku, pr.active AS product_active
+         FROM purchase_items pi
+         LEFT JOIN products pr ON pr.id = pi.product_id
+        WHERE pi.purchase_id = ?
+        ORDER BY pi.id ASC`,
+      [id]
+    );
+
+    res.json({ success: true, data: { purchase: pRows[0], items } });
+  } catch (err) { next(err); }
+});
+
+adminRouter.put('/purchases/:id/payment', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const status = String(req.body?.payment_status || '').toLowerCase().trim();
+    if (!PAYMENT_STATUSES.has(status)) {
+      return res.status(400).json({ success: false, error: `Estado inválido. Válidos: ${[...PAYMENT_STATUSES].join(', ')}` });
+    }
+    const payment_date = req.body?.payment_date ? String(req.body.payment_date).slice(0, 10) : null;
+    const [result] = await pool.execute(
+      'UPDATE purchases SET payment_status = ?, payment_date = ? WHERE id = ?',
+      [status, payment_date, id]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ success: false, error: 'No encontrada' });
+    const [rows] = await pool.execute('SELECT * FROM purchases WHERE id = ?', [id]);
+    res.json({ success: true, data: rows[0] });
+  } catch (err) { next(err); }
+});

@@ -1,0 +1,275 @@
+// Importa una factura de compra al sistema (suppliers + purchases + purchase_items
+// + UPSERT en products). Idempotente: si la factura ya existe, no hace nada.
+//
+// Uso:  node scripts/import-invoice.js
+//
+// Para procesar otra factura, edita el objeto INVOICE de abajo o adapta el script
+// para que reciba la data como JSON.
+
+import 'dotenv/config';
+import { pool, initDb } from '../db/schema.js';
+
+// =====================================================================
+// Datos de la factura — EDITAR ESTA SECCIÓN PARA CADA NUEVA FACTURA
+// =====================================================================
+const INVOICE = {
+  supplier: {
+    name: '888 Digital Inc (888lots)',
+    tax_id: null,
+    contact: 'contact@888lots.com | 1-844-888-5687 | 1416 East Linden Ave, Linden, NJ 07036',
+    payment_terms: 'Pago al ordenar',
+    notes: 'Proveedor US. Envío incluido en factura. A veces lista líneas con qty 0 (productos pedidos pero no enviados).'
+  },
+  purchase: {
+    invoice_number: 'WI0290331',
+    issue_date: '2026-01-23',
+    due_date: null,
+    currency: 'usd',
+    subtotal_cents: 3720,    // $37.20
+    tax_cents: 0,
+    shipping_cents: 200,     // $2.00
+    total_cents: 3920,       // $39.20
+    payment_status: 'pagado',
+    payment_date: '2026-01-23',
+    notes: 'Web Order 2652223405. Línea SAMSON G Track Pro (B075KL6ZLC) facturada con qty 0 → no enviada, no se importa.'
+  },
+  // Líneas REALES (con cantidad > 0). El prorrateo de envío lo calcula el script.
+  items: [
+    {
+      supplier_sku: 'B0BL2MRSK5',
+      asin: 'B0BL2MRSK5',
+      slug: 'rogob-ssd-m2-nvme-512gb',
+      name: 'ROGOB 512GB M.2 NVMe 2242 SSD',
+      brand: 'ROGOB',
+      category: 'computacion',
+      description: 'ROGOB 512GB M.2 NVMe 2242 SSD PCIe Gen3*2 B&M Key Disk Form Factor 42mm NGFF Internal Solid State Hard Drive for PC Laptop Desktop',
+      icon: 'hard-drive',
+      quantity: 1,
+      unit_cost_cents: 1120  // $11.20
+    },
+    {
+      supplier_sku: 'B0BZ3CKFWK',
+      asin: 'B0BZ3CKFWK',
+      slug: 'sgin-tablet-10-android-12-32gb',
+      name: 'SGIN Tablet 10.1" Android 12',
+      brand: 'SGIN',
+      category: 'computacion',
+      description: 'SGIN Tablet 10.1 Inch Android 12 Tablet, 2GB RAM 32GB ROM, Quad-Core A133 1.6GHz, 2MP+5MP Camera, Bluetooth, GPS, 5000mAh (Black)',
+      icon: 'tablet',
+      quantity: 1,
+      unit_cost_cents: 2600  // $26.00
+    }
+  ]
+};
+
+// =====================================================================
+// Lógica del importador (genérica)
+// =====================================================================
+
+async function findOrCreateSupplier(conn, supplier) {
+  const [existing] = await conn.execute(
+    'SELECT id FROM suppliers WHERE name = ?',
+    [supplier.name]
+  );
+  if (existing.length) return existing[0].id;
+
+  const [result] = await conn.execute(
+    `INSERT INTO suppliers (name, tax_id, contact, payment_terms, notes)
+     VALUES (?, ?, ?, ?, ?)`,
+    [supplier.name, supplier.tax_id, supplier.contact, supplier.payment_terms, supplier.notes]
+  );
+  return result.insertId;
+}
+
+async function upsertProduct(conn, item) {
+  // Busca por SKU primero (identificador estable del proveedor)
+  const [bySku] = await conn.execute(
+    'SELECT id, slug, cost_cents, stock FROM products WHERE sku = ?',
+    [item.supplier_sku]
+  );
+  if (bySku.length) {
+    const { id, cost_cents: prevCost, stock: prevStock } = bySku[0];
+    await conn.execute(
+      `UPDATE products
+         SET cost_cents = ?, stock = stock + ?
+       WHERE id = ?`,
+      [item.final_unit_cost_cents, item.quantity, id]
+    );
+    return { product_id: id, action: 'updated', prevCost, prevStock };
+  }
+
+  // Si no existe por SKU, intenta por slug (por si fue creado manualmente antes)
+  const [bySlug] = await conn.execute(
+    'SELECT id FROM products WHERE slug = ?',
+    [item.slug]
+  );
+  if (bySlug.length) {
+    const id = bySlug[0].id;
+    await conn.execute(
+      `UPDATE products
+         SET sku = ?, cost_cents = ?, stock = stock + ?
+       WHERE id = ?`,
+      [item.supplier_sku, item.final_unit_cost_cents, item.quantity, id]
+    );
+    return { product_id: id, action: 'linked-by-slug' };
+  }
+
+  // Producto nuevo → INSERT con active=0 y price_cents=0 (sin precio de venta aún)
+  const [result] = await conn.execute(
+    `INSERT INTO products
+       (slug, name, category, brand, description, price_cents, stock,
+        icon, badge, featured, active, sku, cost_cents)
+     VALUES (?, ?, ?, ?, ?, 0, ?, ?, NULL, 0, 0, ?, ?)`,
+    [
+      item.slug,
+      item.name,
+      item.category,
+      item.brand,
+      item.description,
+      item.quantity,
+      item.icon,
+      item.supplier_sku,
+      item.final_unit_cost_cents
+    ]
+  );
+  return { product_id: result.insertId, action: 'inserted' };
+}
+
+async function importInvoice() {
+  await initDb();
+
+  // Calcula prorrateo de envío por valor de línea (sobre el subtotal de productos)
+  const lineSubtotal = INVOICE.items.reduce(
+    (acc, it) => acc + it.unit_cost_cents * it.quantity, 0
+  );
+  if (lineSubtotal !== INVOICE.purchase.subtotal_cents) {
+    console.warn(
+      `⚠️  Subtotal de líneas (${lineSubtotal}) ≠ subtotal de factura ` +
+      `(${INVOICE.purchase.subtotal_cents}). Revisa los datos.`
+    );
+  }
+
+  // Asigna shipping a cada item proporcional a su line_total
+  let shippingAssigned = 0;
+  INVOICE.items.forEach((it, idx) => {
+    it.line_total_cents = it.unit_cost_cents * it.quantity;
+    const isLast = idx === INVOICE.items.length - 1;
+    if (isLast) {
+      // Último item recibe el residuo para que la suma cuadre exacto
+      it.shipping_alloc_cents = INVOICE.purchase.shipping_cents - shippingAssigned;
+    } else {
+      it.shipping_alloc_cents = Math.round(
+        INVOICE.purchase.shipping_cents * (it.line_total_cents / lineSubtotal)
+      );
+      shippingAssigned += it.shipping_alloc_cents;
+    }
+    // Costo final unitario = (line_total + envío_prorrateado) / cantidad
+    it.final_unit_cost_cents = Math.round(
+      (it.line_total_cents + it.shipping_alloc_cents) / it.quantity
+    );
+  });
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // 1) Proveedor
+    const supplierId = await findOrCreateSupplier(conn, INVOICE.supplier);
+    console.log(`✓ Proveedor: ${INVOICE.supplier.name} (id=${supplierId})`);
+
+    // 2) ¿Factura ya importada?
+    const [existingInv] = await conn.execute(
+      'SELECT id FROM purchases WHERE supplier_id = ? AND invoice_number = ?',
+      [supplierId, INVOICE.purchase.invoice_number]
+    );
+    if (existingInv.length) {
+      console.log(
+        `ℹ️  La factura ${INVOICE.purchase.invoice_number} ya estaba ` +
+        `importada (purchase_id=${existingInv[0].id}). Nada que hacer.`
+      );
+      await conn.commit();
+      return;
+    }
+
+    // 3) Productos (UPSERT con sku + stock + cost_cents)
+    const productResults = [];
+    for (const item of INVOICE.items) {
+      const r = await upsertProduct(conn, item);
+      productResults.push({ ...r, item });
+      console.log(
+        `  • ${item.supplier_sku} ${item.name} → ${r.action} ` +
+        `(product_id=${r.product_id}, +stock ${item.quantity}, ` +
+        `cost_cents=${item.final_unit_cost_cents})`
+      );
+    }
+
+    // 4) Cabecera de la factura
+    const [purchaseResult] = await conn.execute(
+      `INSERT INTO purchases
+         (supplier_id, invoice_number, issue_date, due_date, currency,
+          subtotal_cents, tax_cents, shipping_cents, total_cents,
+          payment_status, payment_date, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        supplierId,
+        INVOICE.purchase.invoice_number,
+        INVOICE.purchase.issue_date,
+        INVOICE.purchase.due_date,
+        INVOICE.purchase.currency,
+        INVOICE.purchase.subtotal_cents,
+        INVOICE.purchase.tax_cents,
+        INVOICE.purchase.shipping_cents,
+        INVOICE.purchase.total_cents,
+        INVOICE.purchase.payment_status,
+        INVOICE.purchase.payment_date,
+        INVOICE.purchase.notes
+      ]
+    );
+    const purchaseId = purchaseResult.insertId;
+    console.log(
+      `✓ Factura ${INVOICE.purchase.invoice_number} registrada ` +
+      `(purchase_id=${purchaseId})`
+    );
+
+    // 5) Líneas
+    for (const r of productResults) {
+      const it = r.item;
+      await conn.execute(
+        `INSERT INTO purchase_items
+           (purchase_id, product_id, supplier_sku, description, quantity,
+            unit_cost_cents, line_total_cents, shipping_alloc_cents,
+            final_unit_cost_cents)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          purchaseId,
+          r.product_id,
+          it.supplier_sku,
+          it.name,
+          it.quantity,
+          it.unit_cost_cents,
+          it.line_total_cents,
+          it.shipping_alloc_cents,
+          it.final_unit_cost_cents
+        ]
+      );
+    }
+    console.log(`✓ ${productResults.length} líneas importadas`);
+
+    await conn.commit();
+    console.log('\n✅ Importación completada correctamente.');
+  } catch (err) {
+    await conn.rollback();
+    console.error('\n❌ Error — transacción revertida:', err.message);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+importInvoice()
+  .then(() => pool.end())
+  .catch((err) => {
+    console.error(err);
+    pool.end();
+    process.exit(1);
+  });

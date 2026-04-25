@@ -64,6 +64,7 @@
             <button @click="tab='products';loadProducts()" :class="tab==='products'?'bg-navy text-white':'text-carbon hover:bg-navy/5'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">Productos</button>
             <button @click="tab='categories';loadCategories()" :class="tab==='categories'?'bg-navy text-white':'text-carbon hover:bg-navy/5'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">Categorías</button>
             <button @click="tab='orders';loadOrders()" :class="tab==='orders'?'bg-navy text-white':'text-carbon hover:bg-navy/5'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">Pedidos</button>
+            <button @click="tab='compras';loadCompras()" :class="tab==='compras'?'bg-navy text-white':'text-carbon hover:bg-navy/5'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">Compras</button>
             <button @click="tab='settings';loadSettings()" :class="tab==='settings'?'bg-navy text-white':'text-carbon hover:bg-navy/5'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">Ajustes</button>
           </nav>
         </div>
@@ -251,6 +252,396 @@
           <div x-show="orders.length === 0" class="text-center py-12 text-carbon/60">
             <i data-lucide="inbox" class="w-10 h-10 mx-auto mb-3 text-navy/30"></i>
             Aún no hay pedidos.
+          </div>
+        </div>
+      </div>
+
+      <!-- Compras -->
+      <div x-show="tab==='compras'">
+        <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+          <h1 class="font-display font-bold text-3xl text-navy">Compras</h1>
+          <div class="flex items-center gap-2">
+            <button @click="comprasView='suppliers'" :class="comprasView==='suppliers'?'bg-navy text-white':'border-2 border-navy/15 text-navy hover:border-navy'" class="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2">
+              <i data-lucide="truck" class="w-4 h-4"></i> Proveedores
+            </button>
+            <button @click="comprasView='purchases'" :class="comprasView==='purchases'?'bg-navy text-white':'border-2 border-navy/15 text-navy hover:border-navy'" class="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2">
+              <i data-lucide="receipt" class="w-4 h-4"></i> Facturas
+            </button>
+            <button @click="openNewSupplier()" class="btn-primary text-navy-deep font-bold px-5 py-2 rounded-full text-sm flex items-center gap-2">
+              <i data-lucide="plus" class="w-4 h-4"></i> Nuevo proveedor
+            </button>
+          </div>
+        </div>
+
+        <!-- Suppliers list -->
+        <div x-show="comprasView==='suppliers'">
+          <div class="bg-white rounded-2xl border border-navy/10 overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-navy/5 text-carbon/70 uppercase text-[11px] tracking-wider">
+                  <tr>
+                    <th class="text-left font-semibold px-4 py-3">Proveedor</th>
+                    <th class="text-left font-semibold px-4 py-3">País</th>
+                    <th class="text-left font-semibold px-4 py-3">Sitio web</th>
+                    <th class="text-right font-semibold px-4 py-3">Facturas</th>
+                    <th class="text-right font-semibold px-4 py-3">Total comprado</th>
+                    <th class="text-left font-semibold px-4 py-3">Última compra</th>
+                    <th class="text-center font-semibold px-4 py-3">Pendientes</th>
+                    <th class="text-right font-semibold px-4 py-3">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="s in suppliers" :key="s.id">
+                    <tr class="border-t border-navy/5 hover:bg-azul/5 transition">
+                      <td class="px-4 py-3">
+                        <button @click="openSupplier(s.id)" class="font-semibold text-navy hover:text-azul text-left" x-text="s.name"></button>
+                        <div class="text-[11px] text-carbon/50" x-text="s.email || ''"></div>
+                      </td>
+                      <td class="px-4 py-3 text-carbon/70" x-text="s.country || '—'"></td>
+                      <td class="px-4 py-3">
+                        <a x-show="s.website" :href="s.website" target="_blank" rel="noopener" class="text-azul hover:underline text-xs flex items-center gap-1">
+                          <i data-lucide="external-link" class="w-3 h-3"></i> <span x-text="(s.website||'').replace(/^https?:\/\//,'').slice(0,40)"></span>
+                        </a>
+                        <span x-show="!s.website" class="text-carbon/40 text-xs">—</span>
+                      </td>
+                      <td class="px-4 py-3 text-right font-semibold" x-text="s.purchase_count || 0"></td>
+                      <td class="px-4 py-3 text-right font-semibold" x-text="money(s.total_spent_cents || 0)"></td>
+                      <td class="px-4 py-3 text-carbon/70" x-text="s.last_purchase_date ? fmtDate(s.last_purchase_date) : '—'"></td>
+                      <td class="px-4 py-3 text-center">
+                        <span x-show="s.open_invoices > 0" class="inline-flex text-[11px] font-semibold px-2 py-1 rounded-full bg-amber/20 text-orange-700" x-text="s.open_invoices + ' abiertas'"></span>
+                        <span x-show="!s.open_invoices" class="text-carbon/30 text-xs">—</span>
+                      </td>
+                      <td class="px-4 py-3 text-right">
+                        <button @click="openSupplier(s.id)" class="text-azul hover:bg-azul/10 w-8 h-8 rounded-lg inline-flex items-center justify-center" title="Ver detalle">
+                          <i data-lucide="eye" class="w-4 h-4"></i>
+                        </button>
+                        <button @click="editSupplier(s)" class="text-navy hover:bg-navy/10 w-8 h-8 rounded-lg inline-flex items-center justify-center" title="Editar">
+                          <i data-lucide="edit-2" class="w-4 h-4"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <div x-show="suppliers.length === 0" class="text-center py-12 text-carbon/60">
+              <i data-lucide="truck" class="w-10 h-10 mx-auto mb-3 text-navy/30"></i>
+              Aún no hay proveedores. Crea el primero con "Nuevo proveedor".
+            </div>
+          </div>
+        </div>
+
+        <!-- Purchases list -->
+        <div x-show="comprasView==='purchases'">
+          <div class="bg-white rounded-2xl border border-navy/10 overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-navy/5 text-carbon/70 uppercase text-[11px] tracking-wider">
+                  <tr>
+                    <th class="text-left font-semibold px-4 py-3">Fecha</th>
+                    <th class="text-left font-semibold px-4 py-3">Proveedor</th>
+                    <th class="text-left font-semibold px-4 py-3">Factura</th>
+                    <th class="text-right font-semibold px-4 py-3">Items</th>
+                    <th class="text-right font-semibold px-4 py-3">Total</th>
+                    <th class="text-left font-semibold px-4 py-3">Vencimiento</th>
+                    <th class="text-center font-semibold px-4 py-3">Estado</th>
+                    <th class="text-right font-semibold px-4 py-3">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="p in purchases" :key="p.id">
+                    <tr class="border-t border-navy/5 hover:bg-azul/5 transition">
+                      <td class="px-4 py-3 text-carbon/70" x-text="fmtDate(p.issue_date)"></td>
+                      <td class="px-4 py-3 font-semibold text-navy" x-text="p.supplier_name"></td>
+                      <td class="px-4 py-3 font-mono text-xs" x-text="p.invoice_number"></td>
+                      <td class="px-4 py-3 text-right" x-text="p.items_count"></td>
+                      <td class="px-4 py-3 text-right font-semibold" x-text="money(p.total_cents)"></td>
+                      <td class="px-4 py-3 text-carbon/70 text-xs">
+                        <template x-if="p.due_date">
+                          <span>
+                            <span x-text="fmtDate(p.due_date)"></span>
+                            <span x-show="p.days_to_due !== null && p.days_to_due < 0" class="ml-1 text-red-600 font-semibold" x-text="'(' + Math.abs(p.days_to_due) + 'd vencida)'"></span>
+                            <span x-show="p.days_to_due !== null && p.days_to_due >= 0 && p.days_to_due <= 3" class="ml-1 text-orange-600 font-semibold" x-text="'(' + p.days_to_due + 'd)'"></span>
+                          </span>
+                        </template>
+                        <span x-show="!p.due_date" class="text-carbon/30">—</span>
+                      </td>
+                      <td class="px-4 py-3 text-center">
+                        <span :class="purchaseStatusClass(p.payment_status)" class="inline-flex text-[11px] font-semibold px-2 py-1 rounded-full capitalize" x-text="p.payment_status"></span>
+                      </td>
+                      <td class="px-4 py-3 text-right">
+                        <button @click="openPurchase(p.id)" class="text-azul hover:bg-azul/10 w-8 h-8 rounded-lg inline-flex items-center justify-center" title="Ver detalle">
+                          <i data-lucide="eye" class="w-4 h-4"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <div x-show="purchases.length === 0" class="text-center py-12 text-carbon/60">
+              <i data-lucide="receipt" class="w-10 h-10 mx-auto mb-3 text-navy/30"></i>
+              Aún no hay facturas registradas.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Supplier Form (new/edit) -->
+      <div x-show="supplierModalOpen" x-cloak class="fixed inset-0 z-50 bg-navy/50 backdrop-blur-sm flex items-center justify-center p-4" @click.self="supplierModalOpen=false">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <form @submit.prevent="saveSupplier()" class="p-6">
+            <h2 class="font-display font-bold text-2xl text-navy mb-1" x-text="editingSupplier.id ? 'Editar proveedor' : 'Nuevo proveedor'"></h2>
+            <p class="text-sm text-carbon/60 mb-5">Datos para análisis de costos, comparaciones y gestión de cuentas por pagar.</p>
+            <div class="grid sm:grid-cols-2 gap-4">
+              <label class="block sm:col-span-2">
+                <span class="text-xs font-semibold text-carbon/70 uppercase tracking-wider">Nombre *</span>
+                <input type="text" required x-model="editingSupplier.name" class="mt-1 w-full border border-navy/15 rounded-lg px-3 py-2 text-sm">
+              </label>
+              <label class="block sm:col-span-2">
+                <span class="text-xs font-semibold text-carbon/70 uppercase tracking-wider">Sitio web</span>
+                <input type="url" placeholder="https://www.proveedor.com" x-model="editingSupplier.website" class="mt-1 w-full border border-navy/15 rounded-lg px-3 py-2 text-sm">
+              </label>
+              <label class="block">
+                <span class="text-xs font-semibold text-carbon/70 uppercase tracking-wider">Email</span>
+                <input type="email" x-model="editingSupplier.email" class="mt-1 w-full border border-navy/15 rounded-lg px-3 py-2 text-sm">
+              </label>
+              <label class="block">
+                <span class="text-xs font-semibold text-carbon/70 uppercase tracking-wider">Teléfono</span>
+                <input type="text" x-model="editingSupplier.phone" class="mt-1 w-full border border-navy/15 rounded-lg px-3 py-2 text-sm">
+              </label>
+              <label class="block">
+                <span class="text-xs font-semibold text-carbon/70 uppercase tracking-wider">País</span>
+                <input type="text" x-model="editingSupplier.country" class="mt-1 w-full border border-navy/15 rounded-lg px-3 py-2 text-sm">
+              </label>
+              <label class="block">
+                <span class="text-xs font-semibold text-carbon/70 uppercase tracking-wider">Moneda</span>
+                <select x-model="editingSupplier.currency" class="mt-1 w-full border border-navy/15 rounded-lg px-3 py-2 text-sm">
+                  <option value="usd">USD</option>
+                  <option value="ves">VES</option>
+                  <option value="eur">EUR</option>
+                  <option value="cny">CNY</option>
+                </select>
+              </label>
+              <label class="block">
+                <span class="text-xs font-semibold text-carbon/70 uppercase tracking-wider">Tax ID / RIF</span>
+                <input type="text" x-model="editingSupplier.tax_id" class="mt-1 w-full border border-navy/15 rounded-lg px-3 py-2 text-sm">
+              </label>
+              <label class="block">
+                <span class="text-xs font-semibold text-carbon/70 uppercase tracking-wider">Condiciones de pago</span>
+                <input type="text" placeholder="Pago al ordenar / Net 30 / etc" x-model="editingSupplier.payment_terms" class="mt-1 w-full border border-navy/15 rounded-lg px-3 py-2 text-sm">
+              </label>
+              <label class="block sm:col-span-2 flex items-center gap-2 pt-2">
+                <input type="checkbox" x-model="editingSupplier.shipping_in_invoice" class="w-4 h-4">
+                <span class="text-sm text-carbon">El proveedor incluye el envío en la factura (no agregar costo de envío externo)</span>
+              </label>
+              <label class="block sm:col-span-2">
+                <span class="text-xs font-semibold text-carbon/70 uppercase tracking-wider">Contacto (texto libre)</span>
+                <textarea x-model="editingSupplier.contact" rows="2" class="mt-1 w-full border border-navy/15 rounded-lg px-3 py-2 text-sm"></textarea>
+              </label>
+              <label class="block sm:col-span-2">
+                <span class="text-xs font-semibold text-carbon/70 uppercase tracking-wider">Notas internas</span>
+                <textarea x-model="editingSupplier.notes" rows="3" placeholder="Patrones de facturación, particularidades, contactos…" class="mt-1 w-full border border-navy/15 rounded-lg px-3 py-2 text-sm"></textarea>
+              </label>
+            </div>
+            <div x-show="supplierFormError" x-cloak class="mt-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm" x-text="supplierFormError"></div>
+            <div class="flex justify-end gap-3 pt-5 border-t border-navy/10 mt-5">
+              <button type="button" @click="supplierModalOpen=false" class="border-2 border-navy/15 text-navy hover:border-navy font-semibold px-5 py-2 rounded-full text-sm">Cancelar</button>
+              <button type="submit" :disabled="supplierSaving" class="btn-primary text-navy-deep font-bold px-6 py-2 rounded-full text-sm disabled:opacity-50" x-text="supplierSaving ? 'Guardando…' : 'Guardar'"></button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Modal Supplier Detail -->
+      <div x-show="supplierDetailOpen" x-cloak class="fixed inset-0 z-50 bg-navy/50 backdrop-blur-sm flex items-center justify-center p-4" @click.self="supplierDetailOpen=false">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+          <div class="p-6" x-show="selectedSupplier">
+            <div class="flex items-start justify-between gap-4 mb-5">
+              <div>
+                <h2 class="font-display font-bold text-2xl text-navy" x-text="selectedSupplier?.supplier?.name"></h2>
+                <div class="text-sm text-carbon/70 mt-1 flex items-center gap-3 flex-wrap">
+                  <span x-show="selectedSupplier?.supplier?.country" class="flex items-center gap-1"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i><span x-text="selectedSupplier?.supplier?.country"></span></span>
+                  <a x-show="selectedSupplier?.supplier?.website" :href="selectedSupplier?.supplier?.website" target="_blank" rel="noopener" class="text-azul hover:underline flex items-center gap-1"><i data-lucide="external-link" class="w-3.5 h-3.5"></i><span x-text="selectedSupplier?.supplier?.website"></span></a>
+                  <span x-show="selectedSupplier?.supplier?.email" class="flex items-center gap-1"><i data-lucide="mail" class="w-3.5 h-3.5"></i><span x-text="selectedSupplier?.supplier?.email"></span></span>
+                  <span x-show="selectedSupplier?.supplier?.phone" class="flex items-center gap-1"><i data-lucide="phone" class="w-3.5 h-3.5"></i><span x-text="selectedSupplier?.supplier?.phone"></span></span>
+                </div>
+              </div>
+              <button @click="supplierDetailOpen=false" class="w-9 h-9 rounded-full hover:bg-navy/10 flex items-center justify-center"><i data-lucide="x" class="w-5 h-5 text-carbon/60"></i></button>
+            </div>
+
+            <div class="grid sm:grid-cols-3 gap-3 mb-5">
+              <div class="bg-navy/5 rounded-xl p-4">
+                <div class="text-[10px] uppercase tracking-wider text-carbon/60 font-semibold">Facturas</div>
+                <div class="font-display font-bold text-2xl text-navy mt-1" x-text="(selectedSupplier?.purchases || []).length"></div>
+              </div>
+              <div class="bg-navy/5 rounded-xl p-4">
+                <div class="text-[10px] uppercase tracking-wider text-carbon/60 font-semibold">Total comprado</div>
+                <div class="font-display font-bold text-2xl text-navy mt-1" x-text="money((selectedSupplier?.purchases || []).reduce((a, p) => a + p.total_cents, 0))"></div>
+              </div>
+              <div class="bg-navy/5 rounded-xl p-4">
+                <div class="text-[10px] uppercase tracking-wider text-carbon/60 font-semibold">Productos distintos</div>
+                <div class="font-display font-bold text-2xl text-navy mt-1" x-text="(selectedSupplier?.products || []).length"></div>
+              </div>
+            </div>
+
+            <h3 class="font-display font-bold text-lg text-navy mb-3 flex items-center gap-2"><i data-lucide="receipt" class="w-5 h-5"></i> Facturas</h3>
+            <div class="bg-white border border-navy/10 rounded-xl overflow-hidden mb-6">
+              <table class="w-full text-sm">
+                <thead class="bg-navy/5 text-carbon/70 uppercase text-[11px] tracking-wider">
+                  <tr>
+                    <th class="text-left font-semibold px-3 py-2">Fecha</th>
+                    <th class="text-left font-semibold px-3 py-2">Factura</th>
+                    <th class="text-right font-semibold px-3 py-2">Items</th>
+                    <th class="text-right font-semibold px-3 py-2">Total</th>
+                    <th class="text-center font-semibold px-3 py-2">Estado</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="p in (selectedSupplier?.purchases || [])" :key="p.id">
+                    <tr class="border-t border-navy/5 hover:bg-azul/5">
+                      <td class="px-3 py-2 text-carbon/70" x-text="fmtDate(p.issue_date)"></td>
+                      <td class="px-3 py-2 font-mono text-xs" x-text="p.invoice_number"></td>
+                      <td class="px-3 py-2 text-right" x-text="p.items_count"></td>
+                      <td class="px-3 py-2 text-right font-semibold" x-text="money(p.total_cents)"></td>
+                      <td class="px-3 py-2 text-center"><span :class="purchaseStatusClass(p.payment_status)" class="inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize" x-text="p.payment_status"></span></td>
+                      <td class="px-3 py-2 text-right"><button @click="openPurchase(p.id)" class="text-azul hover:underline text-xs">Ver</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <div x-show="!(selectedSupplier?.purchases || []).length" class="text-center py-6 text-carbon/50 text-xs">Sin facturas registradas.</div>
+            </div>
+
+            <h3 class="font-display font-bold text-lg text-navy mb-3 flex items-center gap-2"><i data-lucide="package" class="w-5 h-5"></i> Productos comprados a este proveedor</h3>
+            <div class="bg-white border border-navy/10 rounded-xl overflow-hidden">
+              <table class="w-full text-sm">
+                <thead class="bg-navy/5 text-carbon/70 uppercase text-[11px] tracking-wider">
+                  <tr>
+                    <th class="text-left font-semibold px-3 py-2">Producto</th>
+                    <th class="text-left font-semibold px-3 py-2">SKU</th>
+                    <th class="text-right font-semibold px-3 py-2">Costo</th>
+                    <th class="text-right font-semibold px-3 py-2">Venta</th>
+                    <th class="text-right font-semibold px-3 py-2">Margen</th>
+                    <th class="text-right font-semibold px-3 py-2">Stock</th>
+                    <th class="text-right font-semibold px-3 py-2">Comprado total</th>
+                    <th class="text-center font-semibold px-3 py-2">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="pr in (selectedSupplier?.products || [])" :key="pr.id">
+                    <tr class="border-t border-navy/5 hover:bg-azul/5">
+                      <td class="px-3 py-2 font-semibold text-navy" x-text="pr.name"></td>
+                      <td class="px-3 py-2 font-mono text-xs text-carbon/70" x-text="pr.sku || '—'"></td>
+                      <td class="px-3 py-2 text-right" x-text="pr.cost_cents ? money(pr.cost_cents) : '—'"></td>
+                      <td class="px-3 py-2 text-right" x-text="pr.price_cents ? money(pr.price_cents) : '—'"></td>
+                      <td class="px-3 py-2 text-right" x-text="(pr.cost_cents && pr.price_cents) ? ((pr.price_cents - pr.cost_cents) * 100 / pr.price_cents).toFixed(1) + '%' : '—'"></td>
+                      <td class="px-3 py-2 text-right" x-text="pr.stock"></td>
+                      <td class="px-3 py-2 text-right" x-text="pr.total_purchased_qty || 0"></td>
+                      <td class="px-3 py-2 text-center"><span :class="pr.active ? 'bg-green-50 text-green-700' : 'bg-carbon/10 text-carbon/60'" class="inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full" x-text="pr.active ? 'activo' : 'inactivo'"></span></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <div x-show="!(selectedSupplier?.products || []).length" class="text-center py-6 text-carbon/50 text-xs">Sin productos comprados todavía.</div>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-5 border-t border-navy/10 mt-5">
+              <button @click="editSupplier(selectedSupplier?.supplier)" class="border-2 border-navy/15 text-navy hover:border-navy font-semibold px-5 py-2 rounded-full text-sm flex items-center gap-2"><i data-lucide="edit-2" class="w-4 h-4"></i> Editar proveedor</button>
+              <button @click="supplierDetailOpen=false" class="btn-primary text-navy-deep font-bold px-6 py-2 rounded-full text-sm">Cerrar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Purchase Detail -->
+      <div x-show="purchaseDetailOpen" x-cloak class="fixed inset-0 z-50 bg-navy/50 backdrop-blur-sm flex items-center justify-center p-4" @click.self="purchaseDetailOpen=false">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div class="p-6" x-show="selectedPurchase">
+            <div class="flex items-start justify-between gap-4 mb-5">
+              <div>
+                <div class="text-xs text-carbon/60 font-semibold uppercase tracking-wider">Factura</div>
+                <h2 class="font-display font-bold text-2xl text-navy font-mono" x-text="selectedPurchase?.purchase?.invoice_number"></h2>
+                <div class="text-sm text-carbon/70 mt-1" x-text="(selectedPurchase?.purchase?.supplier_name || '') + ' · ' + fmtDate(selectedPurchase?.purchase?.issue_date)"></div>
+              </div>
+              <button @click="purchaseDetailOpen=false" class="w-9 h-9 rounded-full hover:bg-navy/10 flex items-center justify-center"><i data-lucide="x" class="w-5 h-5 text-carbon/60"></i></button>
+            </div>
+
+            <div class="grid sm:grid-cols-4 gap-3 mb-5">
+              <div class="bg-navy/5 rounded-xl p-3">
+                <div class="text-[10px] uppercase tracking-wider text-carbon/60 font-semibold">Subtotal</div>
+                <div class="font-bold text-navy mt-1" x-text="money(selectedPurchase?.purchase?.subtotal_cents || 0)"></div>
+              </div>
+              <div class="bg-navy/5 rounded-xl p-3">
+                <div class="text-[10px] uppercase tracking-wider text-carbon/60 font-semibold">Envío</div>
+                <div class="font-bold text-navy mt-1" x-text="money(selectedPurchase?.purchase?.shipping_cents || 0)"></div>
+              </div>
+              <div class="bg-navy/5 rounded-xl p-3">
+                <div class="text-[10px] uppercase tracking-wider text-carbon/60 font-semibold">Impuestos</div>
+                <div class="font-bold text-navy mt-1" x-text="money(selectedPurchase?.purchase?.tax_cents || 0)"></div>
+              </div>
+              <div class="bg-amber/15 rounded-xl p-3">
+                <div class="text-[10px] uppercase tracking-wider text-orange-700 font-semibold">Total</div>
+                <div class="font-display font-bold text-xl text-orange-700 mt-1" x-text="money(selectedPurchase?.purchase?.total_cents || 0)"></div>
+              </div>
+            </div>
+
+            <div class="bg-white border border-navy/10 rounded-xl overflow-hidden mb-5">
+              <table class="w-full text-sm">
+                <thead class="bg-navy/5 text-carbon/70 uppercase text-[11px] tracking-wider">
+                  <tr>
+                    <th class="text-left font-semibold px-3 py-2">SKU</th>
+                    <th class="text-left font-semibold px-3 py-2">Descripción</th>
+                    <th class="text-right font-semibold px-3 py-2">Cant.</th>
+                    <th class="text-right font-semibold px-3 py-2">Costo unit.</th>
+                    <th class="text-right font-semibold px-3 py-2">Envío prorrat.</th>
+                    <th class="text-right font-semibold px-3 py-2">Costo final</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="it in (selectedPurchase?.items || [])" :key="it.id">
+                    <tr class="border-t border-navy/5">
+                      <td class="px-3 py-2 font-mono text-xs" x-text="it.supplier_sku || '—'"></td>
+                      <td class="px-3 py-2 text-carbon/80" x-text="it.product_name || it.description"></td>
+                      <td class="px-3 py-2 text-right" x-text="it.quantity"></td>
+                      <td class="px-3 py-2 text-right" x-text="money(it.unit_cost_cents)"></td>
+                      <td class="px-3 py-2 text-right text-carbon/60" x-text="money(it.shipping_alloc_cents)"></td>
+                      <td class="px-3 py-2 text-right font-semibold" x-text="money(it.final_unit_cost_cents)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="bg-navy/5 rounded-xl p-4 mb-5 grid sm:grid-cols-3 gap-4">
+              <label class="block">
+                <span class="text-[10px] uppercase tracking-wider text-carbon/60 font-semibold">Estado de pago</span>
+                <select x-model="purchasePayment.status" class="mt-1 w-full border border-navy/15 rounded-lg px-3 py-2 text-sm bg-white">
+                  <option value="pendiente">Pendiente</option>
+                  <option value="parcial">Parcial</option>
+                  <option value="pagado">Pagado</option>
+                  <option value="vencido">Vencido</option>
+                  <option value="en_disputa">En disputa</option>
+                </select>
+              </label>
+              <label class="block">
+                <span class="text-[10px] uppercase tracking-wider text-carbon/60 font-semibold">Fecha de pago</span>
+                <input type="date" x-model="purchasePayment.date" class="mt-1 w-full border border-navy/15 rounded-lg px-3 py-2 text-sm bg-white">
+              </label>
+              <div class="flex items-end">
+                <button @click="savePayment()" :disabled="purchasePayment.saving" class="bg-azul text-white font-semibold px-5 py-2 rounded-lg text-sm hover:bg-azul-light disabled:opacity-50 w-full" x-text="purchasePayment.saving ? 'Guardando…' : 'Guardar pago'"></button>
+              </div>
+            </div>
+
+            <div x-show="selectedPurchase?.purchase?.notes" x-cloak class="text-xs text-carbon/60 p-3 rounded-lg bg-navy/5 mb-5">
+              <span class="font-semibold uppercase tracking-wider">Notas:</span>
+              <span x-text="selectedPurchase?.purchase?.notes"></span>
+            </div>
+
+            <div class="flex justify-end pt-4 border-t border-navy/10">
+              <button @click="purchaseDetailOpen=false" class="btn-primary text-navy-deep font-bold px-6 py-2 rounded-full text-sm">Cerrar</button>
+            </div>
           </div>
         </div>
       </div>
@@ -814,6 +1205,14 @@
       settings: {}, settingsSaving: false, settingsSaved: false, settingsError: '',
       smtpTesting: false, smtpMsg: '', smtpOk: true,
 
+      // Compras
+      comprasView: 'suppliers',
+      suppliers: [], purchases: [],
+      supplierModalOpen: false, editingSupplier: {}, supplierSaving: false, supplierFormError: '',
+      supplierDetailOpen: false, selectedSupplier: null,
+      purchaseDetailOpen: false, selectedPurchase: null,
+      purchasePayment: { status: 'pendiente', date: '', saving: false },
+
       get statCards() {
         return [
           { label: 'Productos activos', value: this.stats.products, icon: 'package', bg: 'bg-azul/10', color: 'text-azul' },
@@ -1249,6 +1648,139 @@
         if (!s) return '—';
         try { return new Date(s).toLocaleDateString('es-US', { day: '2-digit', month: 'short', year: 'numeric' }); }
         catch { return s; }
+      },
+
+      // ===== Compras =====
+      async loadCompras() {
+        await Promise.all([this.loadSuppliers(), this.loadPurchases()]);
+      },
+
+      async loadSuppliers() {
+        const r = await fetch(`${API}/admin/suppliers`, { headers: this.authHeaders() });
+        const j = await r.json();
+        this.suppliers = j.success ? j.data : [];
+        this.$nextTick(() => lucide.createIcons());
+      },
+
+      async loadPurchases() {
+        const r = await fetch(`${API}/admin/purchases`, { headers: this.authHeaders() });
+        const j = await r.json();
+        this.purchases = j.success ? j.data : [];
+        this.$nextTick(() => lucide.createIcons());
+      },
+
+      openNewSupplier() {
+        this.editingSupplier = {
+          name: '', website: '', email: '', phone: '', country: '',
+          currency: 'usd', tax_id: '', payment_terms: '',
+          shipping_in_invoice: true, contact: '', notes: ''
+        };
+        this.supplierFormError = '';
+        this.supplierModalOpen = true;
+        this.$nextTick(() => lucide.createIcons());
+      },
+
+      editSupplier(s) {
+        if (!s) return;
+        this.editingSupplier = {
+          id: s.id,
+          name: s.name || '',
+          website: s.website || '',
+          email: s.email || '',
+          phone: s.phone || '',
+          country: s.country || '',
+          currency: s.currency || 'usd',
+          tax_id: s.tax_id || '',
+          payment_terms: s.payment_terms || '',
+          shipping_in_invoice: s.shipping_in_invoice == null ? true : !!s.shipping_in_invoice,
+          contact: s.contact || '',
+          notes: s.notes || ''
+        };
+        this.supplierFormError = '';
+        this.supplierDetailOpen = false;
+        this.supplierModalOpen = true;
+        this.$nextTick(() => lucide.createIcons());
+      },
+
+      async saveSupplier() {
+        if (this.supplierSaving) return;
+        this.supplierSaving = true;
+        this.supplierFormError = '';
+        try {
+          const isEdit = !!this.editingSupplier.id;
+          const url = isEdit ? `${API}/admin/suppliers/${this.editingSupplier.id}` : `${API}/admin/suppliers`;
+          const r = await fetch(url, {
+            method: isEdit ? 'PUT' : 'POST',
+            headers: this.authHeaders(),
+            body: JSON.stringify(this.editingSupplier)
+          });
+          const j = await r.json();
+          if (!j.success) throw new Error(j.error || 'No se pudo guardar');
+          this.supplierModalOpen = false;
+          window.dispatchEvent(new CustomEvent('admin-toast', { detail: isEdit ? 'Proveedor actualizado' : 'Proveedor creado' }));
+          await this.loadSuppliers();
+        } catch (e) {
+          this.supplierFormError = e.message;
+        } finally {
+          this.supplierSaving = false;
+        }
+      },
+
+      async openSupplier(id) {
+        const r = await fetch(`${API}/admin/suppliers/${id}`, { headers: this.authHeaders() });
+        const j = await r.json();
+        if (!j.success) { alert(j.error || 'No se pudo cargar'); return; }
+        this.selectedSupplier = j.data;
+        this.supplierDetailOpen = true;
+        this.$nextTick(() => lucide.createIcons());
+      },
+
+      async openPurchase(id) {
+        const r = await fetch(`${API}/admin/purchases/${id}`, { headers: this.authHeaders() });
+        const j = await r.json();
+        if (!j.success) { alert(j.error || 'No se pudo cargar'); return; }
+        this.selectedPurchase = j.data;
+        this.purchasePayment = {
+          status: j.data.purchase.payment_status || 'pendiente',
+          date: j.data.purchase.payment_date ? String(j.data.purchase.payment_date).slice(0, 10) : '',
+          saving: false
+        };
+        this.purchaseDetailOpen = true;
+        this.$nextTick(() => lucide.createIcons());
+      },
+
+      async savePayment() {
+        if (this.purchasePayment.saving || !this.selectedPurchase) return;
+        this.purchasePayment.saving = true;
+        try {
+          const r = await fetch(`${API}/admin/purchases/${this.selectedPurchase.purchase.id}/payment`, {
+            method: 'PUT',
+            headers: this.authHeaders(),
+            body: JSON.stringify({
+              payment_status: this.purchasePayment.status,
+              payment_date: this.purchasePayment.date || null
+            })
+          });
+          const j = await r.json();
+          if (!j.success) throw new Error(j.error || 'No se pudo guardar');
+          window.dispatchEvent(new CustomEvent('admin-toast', { detail: 'Pago actualizado' }));
+          this.selectedPurchase.purchase = { ...this.selectedPurchase.purchase, ...j.data };
+          await this.loadPurchases();
+        } catch (e) {
+          alert(e.message);
+        } finally {
+          this.purchasePayment.saving = false;
+        }
+      },
+
+      purchaseStatusClass(s) {
+        return {
+          pendiente: 'bg-amber/20 text-orange-700',
+          parcial:   'bg-azul/15 text-azul',
+          pagado:    'bg-green-50 text-green-700',
+          vencido:   'bg-red-50 text-red-700',
+          en_disputa:'bg-purple-50 text-purple-700'
+        }[s] || 'bg-carbon/10 text-carbon/60';
       }
     });
 

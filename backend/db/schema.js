@@ -112,12 +112,74 @@ export async function initDb() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS suppliers (
+      id            INT PRIMARY KEY AUTO_INCREMENT,
+      name          VARCHAR(200) NOT NULL,
+      tax_id        VARCHAR(40) NULL,
+      contact       TEXT,
+      payment_terms VARCHAR(120),
+      notes         TEXT,
+      created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_supplier_name (name)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS purchases (
+      id              INT PRIMARY KEY AUTO_INCREMENT,
+      supplier_id     INT NOT NULL,
+      invoice_number  VARCHAR(80) NOT NULL,
+      issue_date      DATE NOT NULL,
+      due_date        DATE NULL,
+      currency        VARCHAR(8) NOT NULL DEFAULT 'usd',
+      subtotal_cents  INT NOT NULL DEFAULT 0,
+      tax_cents       INT NOT NULL DEFAULT 0,
+      shipping_cents  INT NOT NULL DEFAULT 0,
+      total_cents     INT NOT NULL DEFAULT 0,
+      payment_status  VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+      payment_date    DATE NULL,
+      notes           TEXT,
+      created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_supplier_invoice (supplier_id, invoice_number),
+      INDEX idx_purchases_status (payment_status),
+      INDEX idx_purchases_due_date (due_date),
+      CONSTRAINT fk_purchases_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS purchase_items (
+      id                    INT PRIMARY KEY AUTO_INCREMENT,
+      purchase_id           INT NOT NULL,
+      product_id            INT NULL,
+      supplier_sku          VARCHAR(120),
+      description           TEXT,
+      quantity              INT NOT NULL,
+      unit_cost_cents       INT NOT NULL,
+      line_total_cents      INT NOT NULL,
+      shipping_alloc_cents  INT NOT NULL DEFAULT 0,
+      final_unit_cost_cents INT NOT NULL,
+      INDEX idx_pi_purchase (purchase_id),
+      INDEX idx_pi_product (product_id),
+      CONSTRAINT fk_pi_purchase FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE,
+      CONSTRAINT fk_pi_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
   // Migraciones idempotentes para bases ya creadas sin estas columnas
   await ensureColumn('products', 'media_json', 'TEXT');
   await ensureColumn('categories', 'parent_id', 'INT NULL');
   await ensureColumn('products', 'sku', 'VARCHAR(80) NULL');
   await ensureIndex('products', 'idx_products_sku', 'sku');
   await ensureColumn('products', 'cost_cents', 'INT NULL');
+  await ensureColumn('suppliers', 'website', 'VARCHAR(255) NULL');
+  await ensureColumn('suppliers', 'email', 'VARCHAR(120) NULL');
+  await ensureColumn('suppliers', 'phone', 'VARCHAR(40) NULL');
+  await ensureColumn('suppliers', 'country', 'VARCHAR(60) NULL');
+  await ensureColumn('suppliers', 'currency', "VARCHAR(8) NOT NULL DEFAULT 'usd'");
+  await ensureColumn('suppliers', 'shipping_in_invoice', 'TINYINT NOT NULL DEFAULT 1');
+  await ensureColumn('suppliers', 'updated_at', 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
 
   // Seed categorías si está vacía
   const [catRows] = await pool.query('SELECT COUNT(*) AS n FROM categories');
