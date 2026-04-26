@@ -36,6 +36,19 @@ async function ensureColumn(table, column, definition) {
   }
 }
 
+// Modifica el tipo de una columna existente solo si su DATA_TYPE actual difiere del esperado.
+// Usado para upgrades de schema (ej. INT → DECIMAL).
+async function ensureColumnType(table, column, expectedDataType, fullDefinition) {
+  const [rows] = await pool.execute(
+    `SELECT DATA_TYPE FROM information_schema.columns
+      WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
+    [table, column]
+  );
+  if (rows.length && rows[0].DATA_TYPE.toLowerCase() !== expectedDataType.toLowerCase()) {
+    await pool.query(`ALTER TABLE \`${table}\` MODIFY COLUMN \`${column}\` ${fullDefinition}`);
+  }
+}
+
 async function ensureIndex(table, indexName, columns) {
   const [rows] = await pool.execute(
     `SELECT COUNT(*) AS n FROM information_schema.statistics
@@ -158,8 +171,8 @@ export async function initDb() {
       quantity              INT NOT NULL,
       unit_cost_cents       INT NOT NULL,
       line_total_cents      INT NOT NULL,
-      shipping_alloc_cents  INT NOT NULL DEFAULT 0,
-      final_unit_cost_cents INT NOT NULL,
+      shipping_alloc_cents  DECIMAL(14,4) NOT NULL DEFAULT 0,
+      final_unit_cost_cents DECIMAL(14,4) NOT NULL,
       INDEX idx_pi_purchase (purchase_id),
       INDEX idx_pi_product (product_id),
       CONSTRAINT fk_pi_purchase FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE,
@@ -180,6 +193,10 @@ export async function initDb() {
   await ensureColumn('suppliers', 'currency', "VARCHAR(8) NOT NULL DEFAULT 'usd'");
   await ensureColumn('suppliers', 'shipping_in_invoice', 'TINYINT NOT NULL DEFAULT 1');
   await ensureColumn('suppliers', 'updated_at', 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+  // Para preservar fracciones de centavo del prorrateo de envío (importante para
+  // que el costeo coincida exactamente con la factura del proveedor).
+  await ensureColumnType('purchase_items', 'shipping_alloc_cents', 'decimal', 'DECIMAL(14,4) NOT NULL DEFAULT 0');
+  await ensureColumnType('purchase_items', 'final_unit_cost_cents', 'decimal', 'DECIMAL(14,4) NOT NULL');
 
   // Seed categorías si está vacía
   const [catRows] = await pool.query('SELECT COUNT(*) AS n FROM categories');

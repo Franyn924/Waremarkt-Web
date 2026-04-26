@@ -46,8 +46,8 @@ CREATE TABLE IF NOT EXISTS purchase_items (
   quantity              INT NOT NULL,
   unit_cost_cents       INT NOT NULL,
   line_total_cents      INT NOT NULL,
-  shipping_alloc_cents  INT NOT NULL DEFAULT 0,
-  final_unit_cost_cents INT NOT NULL,
+  shipping_alloc_cents  DECIMAL(14,4) NOT NULL DEFAULT 0,
+  final_unit_cost_cents DECIMAL(14,4) NOT NULL,
   INDEX idx_pi_purchase (purchase_id),
   INDEX idx_pi_product (product_id),
   CONSTRAINT fk_pi_purchase FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE,
@@ -125,16 +125,19 @@ SET @purchase_id := (SELECT id FROM purchases
 -- Borra líneas previas si existían (para que sea reentrante sin duplicar)
 DELETE FROM purchase_items WHERE purchase_id = @purchase_id;
 
+-- shipping_alloc_cents y final_unit_cost_cents conservan decimales de cent
+-- (DECIMAL 14,4) para no perder precisión en el prorrateo. El último item
+-- compensa el residuo para que la suma exacta = shipping_cents de la factura.
 INSERT INTO purchase_items (purchase_id, product_id, supplier_sku, description, quantity,
                             unit_cost_cents, line_total_cents,
                             shipping_alloc_cents, final_unit_cost_cents)
 VALUES
   (@purchase_id, (SELECT id FROM products WHERE sku = 'B0BL2MRSK5'),
    'B0BL2MRSK5', 'ROGOB 512GB M.2 NVMe 2242 SSD',
-   1, 1120, 1120, 60, 1180),
+   1, 1120, 1120, 60.2151, 1180.2151),
   (@purchase_id, (SELECT id FROM products WHERE sku = 'B0BZ3CKFWK'),
    'B0BZ3CKFWK', 'SGIN Tablet 10.1" Android 12',
-   1, 2600, 2600, 140, 2740);
+   1, 2600, 2600, 139.7849, 2739.7849);
 
 -- ---------- 6) Verificación final ----------
 SELECT 'Resumen' AS '#', '' AS detalle UNION ALL

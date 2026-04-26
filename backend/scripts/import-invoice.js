@@ -93,7 +93,7 @@ async function upsertProduct(conn, item) {
       `UPDATE products
          SET cost_cents = ?, stock = stock + ?
        WHERE id = ?`,
-      [item.final_unit_cost_cents, item.quantity, id]
+      [Math.round(item.final_unit_cost_cents), item.quantity, id]
     );
     return { product_id: id, action: 'updated', prevCost, prevStock };
   }
@@ -129,7 +129,7 @@ async function upsertProduct(conn, item) {
       item.quantity,
       item.icon,
       item.supplier_sku,
-      item.final_unit_cost_cents
+      Math.round(item.final_unit_cost_cents)
     ]
   );
   return { product_id: result.insertId, action: 'inserted' };
@@ -149,22 +149,23 @@ async function importInvoice() {
     );
   }
 
-  // Asigna shipping a cada item proporcional a su line_total
+  // Asigna shipping a cada item proporcional a su line_total.
+  // Se conservan decimales exactos (4 decimales = fracción de centavo) para no
+  // perder precisión en el costeo. El último item compensa el residuo de redondeo.
+  const round4 = n => Math.round(n * 10000) / 10000;
   let shippingAssigned = 0;
   INVOICE.items.forEach((it, idx) => {
     it.line_total_cents = it.unit_cost_cents * it.quantity;
     const isLast = idx === INVOICE.items.length - 1;
     if (isLast) {
-      // Último item recibe el residuo para que la suma cuadre exacto
-      it.shipping_alloc_cents = INVOICE.purchase.shipping_cents - shippingAssigned;
+      it.shipping_alloc_cents = round4(INVOICE.purchase.shipping_cents - shippingAssigned);
     } else {
-      it.shipping_alloc_cents = Math.round(
+      it.shipping_alloc_cents = round4(
         INVOICE.purchase.shipping_cents * (it.line_total_cents / lineSubtotal)
       );
-      shippingAssigned += it.shipping_alloc_cents;
+      shippingAssigned = round4(shippingAssigned + it.shipping_alloc_cents);
     }
-    // Costo final unitario = (line_total + envío_prorrateado) / cantidad
-    it.final_unit_cost_cents = Math.round(
+    it.final_unit_cost_cents = round4(
       (it.line_total_cents + it.shipping_alloc_cents) / it.quantity
     );
   });
