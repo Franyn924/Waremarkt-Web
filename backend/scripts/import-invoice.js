@@ -82,6 +82,18 @@ async function findOrCreateSupplier(conn, supplier) {
 }
 
 async function upsertProduct(conn, item) {
+  const stockDelta = item.update_stock === false ? 0 : item.quantity;
+  const cost = Math.round(item.final_unit_cost_cents);
+
+  // Vínculo manual a un producto existente (cuando el usuario lo identifica)
+  if (item.link_to_product_id) {
+    await conn.execute(
+      'UPDATE products SET cost_cents = ?, stock = stock + ? WHERE id = ?',
+      [cost, stockDelta, item.link_to_product_id]
+    );
+    return { product_id: item.link_to_product_id, action: 'linked-manually' };
+  }
+
   // Busca por SKU primero (identificador estable del proveedor)
   const [bySku] = await conn.execute(
     'SELECT id, slug, cost_cents, stock FROM products WHERE sku = ?',
@@ -93,7 +105,7 @@ async function upsertProduct(conn, item) {
       `UPDATE products
          SET cost_cents = ?, stock = stock + ?
        WHERE id = ?`,
-      [Math.round(item.final_unit_cost_cents), item.quantity, id]
+      [cost, stockDelta, id]
     );
     return { product_id: id, action: 'updated', prevCost, prevStock };
   }
@@ -109,7 +121,7 @@ async function upsertProduct(conn, item) {
       `UPDATE products
          SET sku = ?, cost_cents = ?, stock = stock + ?
        WHERE id = ?`,
-      [item.supplier_sku, item.final_unit_cost_cents, item.quantity, id]
+      [item.supplier_sku, cost, stockDelta, id]
     );
     return { product_id: id, action: 'linked-by-slug' };
   }
