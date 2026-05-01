@@ -186,6 +186,8 @@ export async function initDb() {
   await ensureColumn('products', 'sku', 'VARCHAR(80) NULL');
   await ensureIndex('products', 'idx_products_sku', 'sku');
   await ensureColumn('products', 'cost_cents', 'INT NULL');
+  await ensureColumn('products', 'sold_out_at', 'TIMESTAMP NULL');
+  await ensureIndex('products', 'idx_products_sold_out_at', 'sold_out_at');
   // Fulfillment / envío de pedidos
   await ensureColumn('orders', 'fulfillment_status', "VARCHAR(32) NOT NULL DEFAULT 'unfulfilled'");
   await ensureColumn('orders', 'shipping_carrier', 'VARCHAR(40) NULL');

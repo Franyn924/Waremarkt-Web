@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import Stripe from 'stripe';
 import { pool, getAllSettings } from '../db/schema.js';
 import { sendOrderConfirmation, sendAdminOrderNotification } from '../services/mailer.js';
+import { applyStockTransitionEffects } from '../services/stock.js';
 
 export const webhookRouter = Router();
 
@@ -28,6 +29,7 @@ export async function markOrderPaid(orderId, { providerSession = null } = {}) {
         'UPDATE products SET stock = GREATEST(0, stock - ?) WHERE slug = ?',
         [i.quantity, i.slug]
       );
+      await applyStockTransitionEffects(i.slug);
     }
   }
 

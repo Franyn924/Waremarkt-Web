@@ -12,6 +12,7 @@ import { checkoutRouter } from './routes/checkout.js';
 import { webhookRouter } from './routes/webhook.js';
 import { adminRouter } from './routes/admin.js';
 import { startDailyReportCron } from './services/dailyReport.js';
+import { startSoldOutCron } from './services/stock.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -166,6 +167,7 @@ app.use((err, req, res, next) => {
   }
 
   startDailyReportCron();
+  startSoldOutCron();
 
   app.listen(PORT, () => {
     console.log(`\n  Waremarkt API · http://localhost:${PORT}`);

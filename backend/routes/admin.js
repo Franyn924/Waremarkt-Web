@@ -10,6 +10,7 @@ import { requireAdmin } from '../middleware/auth.js';
 import { buildDailyReport } from '../services/dailyReport.js';
 import { sendDailySalesReport, sendRaw, invalidateMailerCache, sendFulfillmentUpdate } from '../services/mailer.js';
 import { markOrderPaid } from './webhook.js';
+import { applyStockTransitionEffects } from '../services/stock.js';
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -190,6 +191,8 @@ adminRouter.put('/products/:id', async (req, res, next) => {
        WHERE id=?`,
       [p.slug, p.name, p.sku, p.category, p.brand, p.description, p.price_cents, p.compare_at_cents, p.cost_cents, p.stock, p.icon, p.image_url, p.media_json, p.badge, p.featured, p.active, Number(req.params.id)]
     );
+    // Si el admin tocó stock manualmente, refleja el badge "Vendido" / restock
+    await applyStockTransitionEffects(Number(req.params.id));
     const [rows] = await pool.execute('SELECT * FROM products WHERE id = ?', [req.params.id]);
     res.json({ success: true, data: rows[0] });
   } catch (e) {

@@ -8,6 +8,7 @@
 
 import 'dotenv/config';
 import { pool, initDb } from '../db/schema.js';
+import { applyStockTransitionEffects } from '../services/stock.js';
 
 // =====================================================================
 // Datos de la factura — EDITAR ESTA SECCIÓN PARA CADA NUEVA FACTURA
@@ -199,6 +200,8 @@ async function importInvoice() {
     const productResults = [];
     for (const item of INVOICE.items) {
       const r = await upsertProduct(conn, item);
+      // Si el producto vuelve a tener stock, limpia badge "Vendido" y sold_out_at
+      await applyStockTransitionEffects(r.product_id, conn);
       productResults.push({ ...r, item });
       const stockDelta = item.update_stock === false ? 0 : item.quantity;
       console.log(
