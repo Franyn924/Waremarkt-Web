@@ -86,7 +86,7 @@ function formatShipping(ship) {
   return parts.join('<br>');
 }
 
-function renderHtml({ orderNumber, items, subtotalCents, shippingCents, totalCents, currency, customerName, shippingHtml }) {
+function renderHtml({ orderNumber, items, subtotalCents, shippingCents, totalCents, currency, customerName, shippingHtml, discountCents, couponCode }) {
   const rows = items.map(i => `
     <tr>
       <td style="padding:12px 0;border-bottom:1px solid #eef2f6;">
@@ -141,6 +141,8 @@ function renderHtml({ orderNumber, items, subtotalCents, shippingCents, totalCen
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr><td align="right" style="padding:4px 0;color:#6b7280;font-size:13px;">Subtotal</td>
                 <td align="right" width="100" style="padding:4px 0;color:#343A40;font-size:13px;">${money(subtotalCents, currency)}</td></tr>
+            ${discountCents > 0 ? `<tr><td align="right" style="padding:4px 0;color:#0F6B2D;font-size:13px;font-weight:600;">Descuento${couponCode ? ' · <span style="font-family:monospace;background:#D6F5DB;padding:1px 6px;border-radius:4px;">' + escape(couponCode) + '</span>' : ''}</td>
+                <td align="right" style="padding:4px 0;color:#0F6B2D;font-size:13px;font-weight:600;">−${money(discountCents, currency)}</td></tr>` : ''}
             ${shippingCents > 0 ? `<tr><td align="right" style="padding:4px 0;color:#6b7280;font-size:13px;">Envío</td>
                 <td align="right" style="padding:4px 0;color:#343A40;font-size:13px;">${money(shippingCents, currency)}</td></tr>` : ''}
             <tr><td align="right" style="padding:12px 0 0;border-top:1px solid #eef2f6;color:#0A2E50;font-size:16px;font-weight:700;">Total pagado</td>
@@ -170,7 +172,7 @@ function renderHtml({ orderNumber, items, subtotalCents, shippingCents, totalCen
 </body></html>`;
 }
 
-function renderText({ orderNumber, items, totalCents, currency, shippingText }) {
+function renderText({ orderNumber, items, subtotalCents, totalCents, currency, shippingText, discountCents, couponCode }) {
   const lines = items.map(i => `  • ${i.name} ${i.sku ? '(' + i.sku + ')' : ''} — ${i.quantity} × ${money(i.price_cents, currency)} = ${money(i.price_cents * i.quantity, currency)}`).join('\n');
   return [
     `¡Gracias por tu compra en Waremarkt!`,
@@ -181,6 +183,8 @@ function renderText({ orderNumber, items, totalCents, currency, shippingText }) 
     `Productos:`,
     lines,
     ``,
+    discountCents > 0 ? `Subtotal: ${money(subtotalCents, currency)}` : '',
+    discountCents > 0 ? `Descuento${couponCode ? ' (' + couponCode + ')' : ''}: -${money(discountCents, currency)}` : '',
     `Total pagado: ${money(totalCents, currency)}`,
     shippingText ? `\nEnvío a:\n${shippingText}` : '',
     ``,
@@ -199,6 +203,8 @@ export async function sendAdminOrderNotification({ order, stripeSession }) {
   const items = Array.isArray(order.items) ? order.items : [];
   const currency = order.currency || stripeSession.currency || 'usd';
   const totalCents = order.amount_total_cents || stripeSession.amount_total || 0;
+  const discountCents = Number(order.discount_cents) || 0;
+  const couponCode = order.coupon_code || null;
   const orderNumber = `WM-${String(order.id || '').padStart(6, '0')}`;
   const email = stripeSession.customer_details?.email || order.customer_email || '—';
   const name = stripeSession.customer_details?.name || order.customer_name || '—';
@@ -239,6 +245,12 @@ export async function sendAdminOrderNotification({ order, stripeSession }) {
         </tr></thead>
         <tbody>${itemsHtml}</tbody>
       </table>
+      ${discountCents > 0 ? `
+      <div style="margin-top:14px;padding:10px 14px;background:#D6F5DB;border-left:3px solid #0F6B2D;border-radius:6px;font-size:12px;color:#0F6B2D;">
+        <strong>Cupón aplicado:</strong>
+        ${couponCode ? `<span style="font-family:monospace;background:#fff;padding:1px 6px;border-radius:4px;margin-left:4px;">${escape(couponCode)}</span>` : ''}
+        · Descuento: <strong>-${money(discountCents, currency)}</strong>
+      </div>` : ''}
       ${shippingHtml ? `
       <div style="margin-top:20px;padding:14px 16px;background:#f6f8fb;border-radius:8px;">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:6px;">Envío</div>
@@ -261,8 +273,9 @@ export async function sendAdminOrderNotification({ order, stripeSession }) {
     `Items:`,
     ...items.map(i => `  • ${i.quantity}× ${i.name} ${i.sku ? '(' + i.sku + ')' : ''} = ${money(i.price_cents * i.quantity, currency)}`),
     ``,
+    discountCents > 0 ? `Cupón: ${couponCode || '—'} (-${money(discountCents, currency)})` : '',
     `Panel: ${adminUrl}`
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 
   return sendRaw({
     to: cfg.adminTo,
@@ -512,8 +525,12 @@ export async function sendOrderConfirmation({ order, stripeSession }) {
   const items = Array.isArray(order.items) ? order.items : [];
   const currency = order.currency || stripeSession.currency || 'usd';
   const totalCents = order.amount_total_cents || stripeSession.amount_total || 0;
-  const subtotalCents = stripeSession.amount_subtotal ?? items.reduce((s, i) => s + (i.price_cents || 0) * (i.quantity || 0), 0);
-  const shippingCents = Math.max(0, totalCents - subtotalCents);
+  const itemsSubtotal = items.reduce((s, i) => s + (i.price_cents || 0) * (i.quantity || 0), 0);
+  const subtotalCents = stripeSession.amount_subtotal ?? itemsSubtotal;
+  const discountCents = Number(order.discount_cents) || 0;
+  const couponCode = order.coupon_code || null;
+  // Calcula envío: total = subtotal − descuento + envío  ⇒  envío = total − (subtotal − descuento)
+  const shippingCents = Math.max(0, totalCents - (subtotalCents - discountCents));
 
   const ship = stripeSession.shipping_details || order.shipping;
   const shippingHtml = formatShipping(ship);
@@ -524,8 +541,8 @@ export async function sendOrderConfirmation({ order, stripeSession }) {
   const orderNumber = `WM-${String(order.id || '').padStart(6, '0')}`;
   const customerName = stripeSession.customer_details?.name || order.customer_name || '';
 
-  const html = renderHtml({ orderNumber, items, subtotalCents, shippingCents, totalCents, currency, customerName, shippingHtml });
-  const text = renderText({ orderNumber, items, totalCents, currency, shippingText });
+  const html = renderHtml({ orderNumber, items, subtotalCents, shippingCents, totalCents, currency, customerName, shippingHtml, discountCents, couponCode });
+  const text = renderText({ orderNumber, items, subtotalCents, totalCents, currency, shippingText, discountCents, couponCode });
 
   return sendRaw({
     to,

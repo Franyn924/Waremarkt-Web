@@ -55,7 +55,9 @@ export async function markOrderPaid(orderId, { providerSession = null } = {}) {
       items,
       customer_email: o.customer_email,
       customer_name: o.customer_name,
-      shipping: shippingParsed
+      shipping: shippingParsed,
+      coupon_code: o.coupon_code,
+      discount_cents: o.discount_cents || 0
     },
     stripeSession: providerSession || {
       customer_details: { email: o.customer_email, name: o.customer_name },
