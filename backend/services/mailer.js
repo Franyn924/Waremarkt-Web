@@ -369,6 +369,139 @@ export async function sendDailySalesReport({ dateLabel, orders, totalCents, curr
   });
 }
 
+// Configuración por evento de fulfillment para el email al cliente
+const FULFILLMENT_EMAIL = {
+  preparing: {
+    subject: orderNumber => `Tu pedido ${orderNumber} está en preparación`,
+    headline: 'Tu pedido está en preparación',
+    body: 'Estamos alistando tu pedido. Te avisaremos en cuanto salga a envío.',
+    badge: { label: 'En preparación', bg: '#FFF4D1', color: '#8a6400' }
+  },
+  shipped: {
+    subject: orderNumber => `Tu pedido ${orderNumber} está en camino`,
+    headline: '¡Tu pedido salió a envío!',
+    body: 'Tu pedido fue despachado y está en camino.',
+    badge: { label: 'Enviado', bg: '#D4ECFF', color: '#0A2E50' }
+  },
+  delivered: {
+    subject: orderNumber => `Tu pedido ${orderNumber} fue entregado`,
+    headline: '¡Tu pedido fue entregado!',
+    body: 'Tu pedido fue entregado. Esperamos que lo disfrutes.',
+    badge: { label: 'Entregado', bg: '#D6F5DB', color: '#0F6B2D' }
+  },
+  canceled: {
+    subject: orderNumber => `Tu pedido ${orderNumber} fue cancelado`,
+    headline: 'Tu pedido fue cancelado',
+    body: 'Tu pedido fue cancelado. Si tienes dudas, escribínos.',
+    badge: { label: 'Cancelado', bg: '#FBD9D9', color: '#7A1F1F' }
+  },
+  returned: {
+    subject: orderNumber => `Tu pedido ${orderNumber} fue marcado como devuelto`,
+    headline: 'Tu pedido fue devuelto',
+    body: 'Registramos la devolución de tu pedido.',
+    badge: { label: 'Devuelto', bg: '#E5E7EB', color: '#374151' }
+  }
+};
+
+const CARRIER_LABELS = {
+  usps: 'USPS',
+  ups: 'UPS',
+  fedex: 'FedEx',
+  dhl: 'DHL',
+  local: 'Envío local',
+  pickup: 'Retiro en tienda',
+  other: 'Otro'
+};
+
+export async function sendFulfillmentUpdate({ order, status, carrier, trackingNumber, trackingUrl, method }) {
+  const cfg = await getMailConfig();
+  if (!cfg.enabled) return { sent: false, reason: 'SMTP no configurado' };
+
+  const to = order.customer_email;
+  if (!to) return { sent: false, reason: 'sin email del cliente' };
+
+  const tpl = FULFILLMENT_EMAIL[status];
+  if (!tpl) return { sent: false, reason: `sin template para status=${status}` };
+
+  const orderNumber = `WM-${String(order.id || '').padStart(6, '0')}`;
+  const customerName = order.customer_name || '';
+  const carrierLabel = carrier ? (CARRIER_LABELS[carrier] || carrier) : null;
+  const wa = WHATSAPP_NUMBER ? `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent('Hola! Consulta sobre mi pedido ' + orderNumber)}` : null;
+  const site = FRONTEND_URL || 'https://waremarkt.com';
+
+  const trackingBlock = (status === 'shipped' && trackingNumber) ? `
+    <div style="margin-top:24px;padding:20px;background:#0A2E50;border-radius:12px;color:#fff;">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#FFC107;font-weight:600;margin-bottom:6px;">Seguimiento</div>
+      ${carrierLabel ? `<div style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:4px;">Transportista: ${escape(carrierLabel)}${method ? ' · ' + escape(method) : ''}</div>` : ''}
+      <div style="font-family:monospace;font-size:16px;font-weight:700;letter-spacing:1px;">${escape(trackingNumber)}</div>
+      ${trackingUrl ? `<div style="margin-top:14px;"><a href="${trackingUrl}" style="display:inline-block;background:#FFC107;color:#07213A;text-decoration:none;font-weight:700;font-size:13px;padding:10px 22px;border-radius:999px;">Rastrear envío →</a></div>` : ''}
+    </div>` : '';
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#343A40;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f6f8fb;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 24px rgba(10,46,80,0.08);">
+        <tr><td style="background:linear-gradient(135deg,#0A2E50 0%,#173F69 100%);padding:32px 32px 28px;color:#ffffff;">
+          <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;letter-spacing:-0.5px;">WARE<span style="color:#3E9BFF;">MARKT</span></div>
+          <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.6);margin-top:4px;">Actualización de tu pedido</div>
+        </td></tr>
+
+        <tr><td style="padding:32px;">
+          <h1 style="margin:0 0 8px;font-size:24px;color:#0A2E50;font-weight:700;">${escape(tpl.headline)}${customerName ? ', ' + escape(customerName.split(' ')[0]) : ''}</h1>
+          <p style="margin:0 0 24px;color:#6b7280;font-size:14px;line-height:1.6;">${escape(tpl.body)}</p>
+
+          <div style="background:#f6f8fb;border-radius:12px;padding:16px 20px;margin-bottom:8px;">
+            <div style="display:inline-block;width:49%;">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;font-weight:600;">N° de pedido</div>
+              <div style="font-family:monospace;font-size:14px;color:#0A2E50;font-weight:600;margin-top:2px;">${escape(orderNumber)}</div>
+            </div>
+            <div style="display:inline-block;width:49%;vertical-align:top;">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;font-weight:600;">Estado</div>
+              <div style="margin-top:4px;"><span style="display:inline-block;background:${tpl.badge.bg};color:${tpl.badge.color};padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;">${escape(tpl.badge.label)}</span></div>
+            </div>
+          </div>
+
+          ${trackingBlock}
+
+          <div style="margin-top:28px;padding:20px;background:linear-gradient(135deg,#FFC107 0%,#FB8F1A 100%);border-radius:12px;text-align:center;">
+            <div style="font-size:13px;color:#07213A;font-weight:600;margin-bottom:8px;">¿Preguntas sobre tu pedido?</div>
+            ${wa ? `<a href="${wa}" style="display:inline-block;background:#0A2E50;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:10px 24px;border-radius:999px;">Escribínos por WhatsApp</a>` : ''}
+          </div>
+        </td></tr>
+
+        <tr><td style="padding:24px 32px;background:#f6f8fb;text-align:center;color:#6b7280;font-size:12px;line-height:1.6;">
+          <a href="${site}" style="color:#0A2E50;text-decoration:none;font-weight:600;">waremarkt.com</a><br>
+          Soluciones logísticas inteligentes · US + LatAm
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+  const text = [
+    tpl.headline + (customerName ? ', ' + customerName.split(' ')[0] : '') + '!',
+    '',
+    tpl.body,
+    '',
+    `Pedido: ${orderNumber}`,
+    `Estado: ${tpl.badge.label}`,
+    (status === 'shipped' && trackingNumber) ? `\nTransportista: ${carrierLabel || '—'}${method ? ' · ' + method : ''}\nTracking: ${trackingNumber}${trackingUrl ? '\n' + trackingUrl : ''}` : '',
+    '',
+    WHATSAPP_NUMBER ? `Consultas: WhatsApp +${WHATSAPP_NUMBER}` : '',
+    '',
+    `— Waremarkt · ${FRONTEND_URL || 'waremarkt.com'}`
+  ].filter(Boolean).join('\n');
+
+  return sendRaw({
+    to,
+    subject: tpl.subject(orderNumber) + ' — Waremarkt',
+    text,
+    html
+  });
+}
+
 export async function sendOrderConfirmation({ order, stripeSession }) {
   const cfg = await getMailConfig();
   if (!cfg.enabled) return { sent: false, reason: 'SMTP no configurado' };

@@ -99,11 +99,15 @@
           <span x-text="loading ? WMi18n.t('cart.pay_stripe_loading') : WMi18n.t('cart.pay_stripe')"></span>
         </button>
 
+        <button @click="openForm('nowpayments')" class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold py-3 rounded-full text-sm flex items-center justify-center gap-2 mb-3">
+          <i data-lucide="bitcoin" class="w-4 h-4"></i> Pagar con cripto
+        </button>
+
         <div class="grid grid-cols-2 gap-2">
           <button @click="payWhatsApp()" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-full text-sm flex items-center justify-center gap-1.5">
             <i data-lucide="message-circle" class="w-4 h-4"></i> <span data-i18n="cart.pay_wa">WhatsApp</span>
           </button>
-          <button @click="payTransfer()" class="bg-navy hover:bg-navy-deep text-white font-semibold py-3 rounded-full text-sm flex items-center justify-center gap-1.5">
+          <button @click="openForm('transfer')" class="bg-navy hover:bg-navy-deep text-white font-semibold py-3 rounded-full text-sm flex items-center justify-center gap-1.5">
             <i data-lucide="landmark" class="w-4 h-4"></i> <span data-i18n="cart.pay_tr">Transferencia</span>
           </button>
         </div>
@@ -117,28 +121,252 @@
         </div>
       </aside>
     </div>
+
+    <!-- ============================================================== -->
+    <!-- MODAL: Datos del cliente (Transferencia / NowPayments)         -->
+    <!-- ============================================================== -->
+    <div x-show="formOpen" x-cloak @keydown.escape.window="formOpen=false" class="fixed inset-0 bg-navy/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div @click.outside="formOpen=false" class="bg-white rounded-2xl shadow-2xl w-full max-w-lg my-8">
+        <div class="flex items-start justify-between p-5 border-b border-navy/10">
+          <div>
+            <div class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold mb-0.5" x-text="formMode === 'transfer' ? 'Pago por transferencia' : 'Pago con cripto'"></div>
+            <div class="font-display font-bold text-xl text-navy">Datos para tu pedido</div>
+          </div>
+          <button @click="formOpen=false" class="w-8 h-8 rounded-full hover:bg-navy/5 flex items-center justify-center">
+            <i data-lucide="x" class="w-5 h-5 text-carbon/60"></i>
+          </button>
+        </div>
+        <form @submit.prevent="submitForm()" class="p-5 space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Nombre completo *</label>
+              <input x-model="form.name" type="text" required class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+            </div>
+            <div>
+              <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Teléfono *</label>
+              <input x-model="form.phone" type="tel" required placeholder="+1 407 ..." class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+            </div>
+          </div>
+          <div>
+            <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Email *</label>
+            <input x-model="form.email" type="email" required class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+          </div>
+          <div>
+            <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Dirección de envío *</label>
+            <input x-model="form.address.line1" type="text" required placeholder="Calle y número" class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm mb-2 focus:border-azul focus:outline-none">
+            <input x-model="form.address.line2" type="text" placeholder="Apto / Suite (opcional)" class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Ciudad *</label>
+              <input x-model="form.address.city" type="text" required class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+            </div>
+            <div>
+              <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Estado</label>
+              <input x-model="form.address.state" type="text" placeholder="FL" class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+            </div>
+            <div>
+              <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">CP *</label>
+              <input x-model="form.address.postal_code" type="text" required class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+            </div>
+          </div>
+          <div>
+            <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">País *</label>
+            <select x-model="form.address.country" required class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+              <option value="US">Estados Unidos</option>
+              <option value="MX">México</option>
+              <option value="CO">Colombia</option>
+              <option value="AR">Argentina</option>
+              <option value="VE">Venezuela</option>
+              <option value="PE">Perú</option>
+              <option value="CL">Chile</option>
+              <option value="EC">Ecuador</option>
+              <option value="DO">República Dominicana</option>
+              <option value="GT">Guatemala</option>
+              <option value="HN">Honduras</option>
+              <option value="SV">El Salvador</option>
+              <option value="NI">Nicaragua</option>
+              <option value="CR">Costa Rica</option>
+              <option value="PA">Panamá</option>
+              <option value="UY">Uruguay</option>
+              <option value="PY">Paraguay</option>
+              <option value="BO">Bolivia</option>
+              <option value="PR">Puerto Rico</option>
+            </select>
+          </div>
+          <p x-show="formError" x-text="formError" class="text-sm text-red-600 bg-red-50 p-3 rounded-lg"></p>
+          <div class="flex justify-between items-center pt-2 border-t border-navy/5">
+            <div class="text-sm text-carbon/70">Total: <span class="font-display font-bold text-navy text-lg" x-text="money(total)"></span></div>
+            <div class="flex gap-2">
+              <button type="button" @click="formOpen=false" class="px-4 py-2 text-sm font-semibold text-carbon/70 hover:text-carbon">Cancelar</button>
+              <button type="submit" :disabled="formSubmitting" class="btn-primary text-navy-deep font-bold px-6 py-2.5 rounded-full text-sm disabled:opacity-50 flex items-center gap-2">
+                <i :data-lucide="formMode === 'transfer' ? 'landmark' : 'bitcoin'" class="w-4 h-4"></i>
+                <span x-text="formSubmitting ? 'Procesando…' : (formMode === 'transfer' ? 'Generar instrucciones' : 'Continuar al pago')"></span>
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- MODAL: Instrucciones post-transferencia (Zelle)                -->
+    <!-- ============================================================== -->
+    <div x-show="transferResult" x-cloak class="fixed inset-0 bg-navy/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg my-8">
+        <div class="bg-gradient-to-br from-navy to-navy-light text-white p-6 rounded-t-2xl">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="w-10 h-10 rounded-full bg-amber/20 flex items-center justify-center">
+              <i data-lucide="check" class="w-5 h-5 text-amber"></i>
+            </div>
+            <div>
+              <div class="text-[11px] uppercase tracking-[0.15em] text-amber font-semibold">Pedido creado</div>
+              <div class="font-display font-bold text-xl font-mono" x-text="transferResult?.order_number"></div>
+            </div>
+          </div>
+          <p class="text-sm text-white/80 mt-3">Enviá la transferencia con los datos abajo y avisanos por WhatsApp para confirmar.</p>
+        </div>
+        <div class="p-6 space-y-4">
+          <div class="text-center bg-navy/5 rounded-xl p-4">
+            <div class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold">Total a transferir</div>
+            <div class="font-display font-bold text-3xl text-navy" x-text="money(transferResult?.total_cents || 0)"></div>
+          </div>
+
+          <div x-show="transferResult?.instructions?.zelle_email || transferResult?.instructions?.zelle_phone" class="bg-azul/5 border-2 border-azul/20 rounded-xl p-4 space-y-2">
+            <div class="text-[11px] uppercase tracking-wider text-azul font-bold">Datos Zelle</div>
+            <div x-show="transferResult?.instructions?.zelle_account_holder">
+              <div class="text-[10px] uppercase text-carbon/60">Titular</div>
+              <div class="font-semibold text-navy" x-text="transferResult?.instructions?.zelle_account_holder"></div>
+            </div>
+            <div x-show="transferResult?.instructions?.zelle_email">
+              <div class="text-[10px] uppercase text-carbon/60">Email</div>
+              <div class="font-mono text-navy font-semibold flex items-center gap-2">
+                <span x-text="transferResult?.instructions?.zelle_email"></span>
+                <button @click="copyToClipboard(transferResult.instructions.zelle_email)" class="text-azul hover:text-navy" title="Copiar"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+              </div>
+            </div>
+            <div x-show="transferResult?.instructions?.zelle_phone">
+              <div class="text-[10px] uppercase text-carbon/60">Teléfono</div>
+              <div class="font-mono text-navy font-semibold flex items-center gap-2">
+                <span x-text="transferResult?.instructions?.zelle_phone"></span>
+                <button @click="copyToClipboard(transferResult.instructions.zelle_phone)" class="text-azul hover:text-navy" title="Copiar"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+              </div>
+            </div>
+          </div>
+
+          <div x-show="!(transferResult?.instructions?.zelle_email || transferResult?.instructions?.zelle_phone)" class="bg-amber/10 border-2 border-amber/30 rounded-xl p-4 text-sm text-orange-800">
+            ⚠️ Datos de Zelle no configurados. Contactanos por WhatsApp para coordinar el pago.
+          </div>
+
+          <div x-show="transferResult?.instructions?.transfer_instructions" class="text-sm text-carbon/80 whitespace-pre-line border-l-4 border-amber pl-3" x-text="transferResult?.instructions?.transfer_instructions"></div>
+
+          <div class="bg-amber/10 rounded-xl p-3 text-xs text-orange-800 leading-relaxed">
+            <strong>Importante:</strong> en el concepto de la transferencia incluí <strong x-text="transferResult?.order_number"></strong> para que podamos identificarla. Tu pedido pasa a "pagado" en cuanto confirmemos la recepción.
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 pt-2">
+            <a :href="whatsappUrl()" target="_blank" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-full text-sm flex items-center justify-center gap-2">
+              <i data-lucide="message-circle" class="w-4 h-4"></i> Avisar por WhatsApp
+            </a>
+            <button @click="closeTransferResult()" class="bg-navy hover:bg-navy-deep text-white font-semibold py-3 rounded-full text-sm">Listo</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
 
   <script>
     window.money = WM.money;
     window.carritoApp = () => ({
       items: [], total: 0, loading: false, error: '',
+      formOpen: false, formMode: 'transfer', formSubmitting: false, formError: '',
+      form: {
+        name: '', email: '', phone: '',
+        address: { line1: '', line2: '', city: '', state: '', postal_code: '', country: 'US' }
+      },
+      transferResult: null,
+
       load() {
         this.refresh();
         window.addEventListener('cart:update', () => this.refresh());
         window.addEventListener('i18n:change', () => this.$nextTick(() => WMi18n.apply()));
+        // Restaurar datos del último checkout (si los guardamos)
+        try {
+          const saved = JSON.parse(localStorage.getItem('wm_customer') || 'null');
+          if (saved) this.form = { ...this.form, ...saved, address: { ...this.form.address, ...(saved.address || {}) } };
+        } catch {}
         this.$nextTick(() => lucide.createIcons());
       },
       refresh() { this.items = WM.cart.items(); this.total = WM.cart.total(); this.$nextTick(() => { lucide.createIcons(); WMi18n.apply(); }); },
       setQty(slug, q) { WM.cart.setQty(slug, q); },
       remove(slug) { WM.cart.remove(slug); },
+
       async payStripe() {
         this.loading = true; this.error = '';
         try { await WM.cart.checkoutStripe(); }
         catch (e) { this.error = e.message || 'No se pudo iniciar el checkout. Verifica que el backend esté corriendo y que hayas configurado Stripe en .env'; this.loading = false; }
       },
       payWhatsApp() { WM.cart.checkoutWhatsApp(); },
-      payTransfer() { WM.cart.checkoutTransfer(); }
+
+      openForm(mode) {
+        this.formMode = mode;
+        this.formError = '';
+        this.formOpen = true;
+        this.$nextTick(() => lucide.createIcons());
+      },
+
+      async submitForm() {
+        this.formSubmitting = true;
+        this.formError = '';
+        // Persistir para próximas compras
+        try { localStorage.setItem('wm_customer', JSON.stringify(this.form)); } catch {}
+        const payload = {
+          items: this.items.map(i => ({ slug: i.slug, quantity: i.quantity })),
+          customer: this.form
+        };
+        const endpoint = this.formMode === 'transfer' ? '/checkout/transfer' : '/checkout/nowpayments';
+        try {
+          const r = await fetch(`${WM.API}${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const j = await r.json();
+          if (!j.success) throw new Error(j.error || 'Error al procesar el pedido');
+          if (this.formMode === 'transfer') {
+            this.formOpen = false;
+            this.transferResult = j.data;
+            WM.cart.clear();
+            this.$nextTick(() => lucide.createIcons());
+          } else {
+            // NowPayments → redirigir al hosted invoice
+            if (!j.data.invoice_url) throw new Error('NowPayments no devolvió URL de pago');
+            WM.cart.clear();
+            window.location.href = j.data.invoice_url;
+          }
+        } catch (e) {
+          this.formError = e.message;
+        } finally {
+          this.formSubmitting = false;
+        }
+      },
+
+      whatsappUrl() {
+        const num = (this.transferResult?.instructions?.whatsapp_number) || '';
+        if (!num) return '#';
+        const msg = `Hola! Acabo de hacer una transferencia para el pedido ${this.transferResult.order_number} por ${money(this.transferResult.total_cents)}. Adjunto comprobante.`;
+        return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
+      },
+
+      copyToClipboard(text) {
+        try { navigator.clipboard.writeText(text); } catch {}
+      },
+
+      closeTransferResult() {
+        this.transferResult = null;
+        // Si vienen de pagar, ya está. Refrescamos vista.
+        this.refresh();
+      }
     });
 
     window.addEventListener('DOMContentLoaded', () => lucide.createIcons());

@@ -186,6 +186,23 @@ export async function initDb() {
   await ensureColumn('products', 'sku', 'VARCHAR(80) NULL');
   await ensureIndex('products', 'idx_products_sku', 'sku');
   await ensureColumn('products', 'cost_cents', 'INT NULL');
+  // Fulfillment / envío de pedidos
+  await ensureColumn('orders', 'fulfillment_status', "VARCHAR(32) NOT NULL DEFAULT 'unfulfilled'");
+  await ensureColumn('orders', 'shipping_carrier', 'VARCHAR(40) NULL');
+  await ensureColumn('orders', 'shipping_method', 'VARCHAR(80) NULL');
+  await ensureColumn('orders', 'tracking_number', 'VARCHAR(120) NULL');
+  await ensureColumn('orders', 'tracking_url', 'VARCHAR(500) NULL');
+  await ensureColumn('orders', 'shipped_at', 'TIMESTAMP NULL');
+  await ensureColumn('orders', 'delivered_at', 'TIMESTAMP NULL');
+  await ensureColumn('orders', 'fulfillment_notes', 'TEXT NULL');
+  await ensureIndex('orders', 'idx_orders_fulfillment', 'fulfillment_status');
+  // Pagos multi-proveedor (Stripe / NowPayments / Transferencia Zelle)
+  await ensureColumn('orders', 'payment_provider', 'VARCHAR(20) NULL');
+  await ensureColumn('orders', 'customer_phone', 'VARCHAR(40) NULL');
+  await ensureColumn('orders', 'nowpayments_invoice_id', 'VARCHAR(120) NULL');
+  await ensureColumn('orders', 'nowpayments_payment_id', 'VARCHAR(120) NULL');
+  await ensureColumn('orders', 'pay_currency', 'VARCHAR(20) NULL');
+  await ensureIndex('orders', 'idx_orders_payment_provider', 'payment_provider');
   await ensureColumn('suppliers', 'website', 'VARCHAR(255) NULL');
   await ensureColumn('suppliers', 'email', 'VARCHAR(120) NULL');
   await ensureColumn('suppliers', 'phone', 'VARCHAR(40) NULL');
@@ -219,7 +236,17 @@ export async function initDb() {
     tax_behavior: 'exclusive',
     checkout_success_url: '/success.html',
     checkout_cancel_url: '/cancel.html',
-    whatsapp_number: '14079434098'
+    whatsapp_number: '14079434098',
+    // Transferencia / Zelle
+    zelle_email: '',
+    zelle_phone: '',
+    zelle_account_holder: '',
+    transfer_instructions: '',
+    // NowPayments (cripto)
+    nowpayments_api_key: '',
+    nowpayments_ipn_secret: '',
+    nowpayments_enabled: '0',
+    nowpayments_sandbox: '1'
   };
   const values = Object.entries(DEFAULT_SETTINGS).map(([k, v]) => [k, v]);
   await pool.query(

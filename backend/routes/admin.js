@@ -8,7 +8,8 @@ import Stripe from 'stripe';
 import { pool } from '../db/schema.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { buildDailyReport } from '../services/dailyReport.js';
-import { sendDailySalesReport, sendRaw, invalidateMailerCache } from '../services/mailer.js';
+import { sendDailySalesReport, sendRaw, invalidateMailerCache, sendFulfillmentUpdate } from '../services/mailer.js';
+import { markOrderPaid } from './webhook.js';
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -423,7 +424,11 @@ const ALLOWED_SETTING_KEYS = new Set([
   'checkout_success_url', 'checkout_cancel_url',
   'whatsapp_number',
   'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from',
-  'admin_notify_email'
+  'admin_notify_email',
+  // Transferencia / Zelle
+  'zelle_email', 'zelle_phone', 'zelle_account_holder', 'transfer_instructions',
+  // NowPayments (cripto)
+  'nowpayments_api_key', 'nowpayments_ipn_secret', 'nowpayments_enabled', 'nowpayments_sandbox'
 ]);
 
 const SMTP_KEYS = new Set(['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'admin_notify_email']);
@@ -494,6 +499,29 @@ adminRouter.post('/settings/smtp-test', async (req, res, next) => {
 
 // ==== ORDERS ====
 
+// State machine de fulfillment (envío). Separado de `status` (pago).
+const FULFILLMENT_TRANSITIONS = {
+  unfulfilled: ['preparing', 'shipped', 'canceled'],
+  preparing:   ['shipped', 'unfulfilled', 'canceled'],
+  shipped:     ['delivered', 'returned'],
+  delivered:   ['returned'],
+  canceled:    [],
+  returned:    []
+};
+const FULFILLMENT_STATUSES = Object.keys(FULFILLMENT_TRANSITIONS);
+
+const TRACKING_URLS = {
+  usps:  'https://tools.usps.com/go/TrackConfirmAction?qtc_tLabels1=',
+  ups:   'https://www.ups.com/track?tracknum=',
+  fedex: 'https://www.fedex.com/fedextrack/?trknbr=',
+  dhl:   'https://www.dhl.com/us-en/home/tracking.html?tracking-id='
+};
+function buildTrackingUrl(carrier, trackingNumber) {
+  if (!carrier || !trackingNumber) return null;
+  const base = TRACKING_URLS[String(carrier).toLowerCase()];
+  return base ? base + encodeURIComponent(trackingNumber) : null;
+}
+
 adminRouter.get('/orders', async (req, res, next) => {
   try {
     const [rows] = await pool.query('SELECT * FROM orders ORDER BY created_at DESC LIMIT 100');
@@ -503,6 +531,121 @@ adminRouter.get('/orders', async (req, res, next) => {
       shipping: safeJson(o.shipping_json)
     }));
     res.json({ success: true, data: parsed });
+  } catch (err) { next(err); }
+});
+
+adminRouter.get('/orders/:id', async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ success: false, error: 'Pedido no encontrado' });
+    const o = rows[0];
+    res.json({
+      success: true,
+      data: {
+        ...o,
+        items: safeJson(o.items_json),
+        shipping: safeJson(o.shipping_json)
+      }
+    });
+  } catch (err) { next(err); }
+});
+
+// PUT /orders/:id/mark-paid — marca un pedido (típicamente transfer/Zelle o
+// pendiente) como pagado: descuenta stock y dispara emails. Idempotente.
+adminRouter.put('/orders/:id/mark-paid', async (req, res, next) => {
+  try {
+    const result = await markOrderPaid(Number(req.params.id));
+    res.json({ success: true, data: result });
+  } catch (err) {
+    if (/no encontrado/i.test(err.message)) return res.status(404).json({ success: false, error: err.message });
+    next(err);
+  }
+});
+
+// PUT /orders/:id/fulfillment — actualiza estado de envío + carrier/tracking + notas.
+// Body: { fulfillment_status, shipping_carrier?, shipping_method?, tracking_number?, tracking_url?, fulfillment_notes?, notify_customer? }
+adminRouter.put('/orders/:id/fulfillment', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const body = req.body || {};
+    const target = String(body.fulfillment_status || '').toLowerCase();
+    if (!FULFILLMENT_STATUSES.includes(target)) {
+      return res.status(400).json({ success: false, error: `fulfillment_status inválido. Válidos: ${FULFILLMENT_STATUSES.join(', ')}` });
+    }
+
+    const [rows] = await pool.execute('SELECT * FROM orders WHERE id = ?', [id]);
+    if (!rows.length) return res.status(404).json({ success: false, error: 'Pedido no encontrado' });
+    const order = rows[0];
+
+    const current = order.fulfillment_status || 'unfulfilled';
+    if (target !== current && !FULFILLMENT_TRANSITIONS[current].includes(target)) {
+      return res.status(400).json({
+        success: false,
+        error: `Transición no permitida: ${current} → ${target}. Permitidas: ${FULFILLMENT_TRANSITIONS[current].join(', ') || '(ninguna, estado terminal)'}`
+      });
+    }
+
+    const carrier = body.shipping_carrier ? String(body.shipping_carrier).toLowerCase().trim() : (order.shipping_carrier || null);
+    const method  = body.shipping_method  != null ? String(body.shipping_method).trim() || null : order.shipping_method;
+    const tracking = body.tracking_number != null ? String(body.tracking_number).trim() || null : order.tracking_number;
+    const notes    = body.fulfillment_notes != null ? String(body.fulfillment_notes) : order.fulfillment_notes;
+
+    if (target === 'shipped' && !tracking) {
+      return res.status(400).json({ success: false, error: 'Para marcar enviado, el N° de tracking es obligatorio.' });
+    }
+
+    const trackingUrl = body.tracking_url != null
+      ? (String(body.tracking_url).trim() || null)
+      : buildTrackingUrl(carrier, tracking);
+
+    const now = new Date();
+    const shippedAt = target === 'shipped' && current !== 'shipped'
+      ? now
+      : (current === 'shipped' || target === 'shipped' || target === 'delivered' || target === 'returned'
+          ? order.shipped_at
+          : null);
+    const deliveredAt = target === 'delivered' && current !== 'delivered'
+      ? now
+      : (target === 'returned' ? order.delivered_at : (target === 'delivered' ? order.delivered_at : (current === 'delivered' ? order.delivered_at : null)));
+
+    await pool.execute(
+      `UPDATE orders SET
+         fulfillment_status = ?,
+         shipping_carrier = ?,
+         shipping_method = ?,
+         tracking_number = ?,
+         tracking_url = ?,
+         fulfillment_notes = ?,
+         shipped_at = ?,
+         delivered_at = ?
+       WHERE id = ?`,
+      [target, carrier, method, tracking, trackingUrl, notes, shippedAt, deliveredAt, id]
+    );
+
+    const [updatedRows] = await pool.execute('SELECT * FROM orders WHERE id = ?', [id]);
+    const updated = updatedRows[0];
+
+    let emailResult = { sent: false, reason: 'no solicitado' };
+    if (body.notify_customer && target !== current && target !== 'unfulfilled') {
+      emailResult = await sendFulfillmentUpdate({
+        order: { ...updated, items: safeJson(updated.items_json) },
+        status: target,
+        carrier,
+        trackingNumber: tracking,
+        trackingUrl,
+        method
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...updated,
+        items: safeJson(updated.items_json),
+        shipping: safeJson(updated.shipping_json)
+      },
+      email: emailResult
+    });
   } catch (err) { next(err); }
 });
 
