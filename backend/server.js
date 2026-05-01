@@ -9,6 +9,7 @@ import { productsRouter } from './routes/products.js';
 import { categoriesRouter } from './routes/categories.js';
 import { settingsRouter } from './routes/settings.js';
 import { checkoutRouter } from './routes/checkout.js';
+import { couponsRouter } from './routes/coupons.js';
 import { webhookRouter } from './routes/webhook.js';
 import { adminRouter } from './routes/admin.js';
 import { startDailyReportCron } from './services/dailyReport.js';
@@ -33,6 +34,7 @@ app.use('/api/products', productsRouter);
 app.use('/api/categories', categoriesRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/checkout', checkoutRouter);
+app.use('/api/coupons', couponsRouter);
 app.use('/api/admin', adminRouter);
 
 // Archivos subidos (fotos/videos de productos)

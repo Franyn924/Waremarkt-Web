@@ -65,6 +65,7 @@
             <button @click="tab='categories';loadCategories()" :class="tab==='categories'?'bg-navy text-white':'text-carbon hover:bg-navy/5'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">Categorías</button>
             <button @click="tab='orders';loadOrders()" :class="tab==='orders'?'bg-navy text-white':'text-carbon hover:bg-navy/5'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">Pedidos</button>
             <button @click="tab='compras';loadCompras()" :class="tab==='compras'?'bg-navy text-white':'text-carbon hover:bg-navy/5'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">Compras</button>
+            <button @click="tab='coupons';loadCoupons()" :class="tab==='coupons'?'bg-navy text-white':'text-carbon hover:bg-navy/5'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">Cupones</button>
             <button @click="tab='settings';loadSettings()" :class="tab==='settings'?'bg-navy text-white':'text-carbon hover:bg-navy/5'" class="px-3 py-1.5 rounded-lg text-sm font-medium transition">Ajustes</button>
           </nav>
         </div>
@@ -715,6 +716,52 @@
         </div>
       </div>
 
+      <!-- Cupones -->
+      <div x-show="tab==='coupons'">
+        <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+          <h1 class="font-display font-bold text-3xl text-navy">Cupones</h1>
+          <button @click="openNewCoupon()" class="btn-primary text-navy-deep font-bold px-5 py-2 rounded-full text-sm flex items-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i> Nuevo cupón
+          </button>
+        </div>
+        <div class="bg-white rounded-2xl border border-navy/10 overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-navy/5 text-carbon/70 uppercase text-[11px] tracking-wider">
+                <tr>
+                  <th class="text-left font-semibold px-4 py-3">Código</th>
+                  <th class="text-left font-semibold px-4 py-3">Descripción</th>
+                  <th class="text-left font-semibold px-4 py-3">Descuento</th>
+                  <th class="text-left font-semibold px-4 py-3">Aplica a</th>
+                  <th class="text-center font-semibold px-4 py-3">Usos</th>
+                  <th class="text-left font-semibold px-4 py-3">Vigencia</th>
+                  <th class="text-center font-semibold px-4 py-3">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="c in coupons" :key="c.id">
+                  <tr class="border-t border-navy/5 hover:bg-azul/5 cursor-pointer transition" @click="editCoupon(c)">
+                    <td class="px-4 py-3 font-mono font-bold text-navy" x-text="c.code"></td>
+                    <td class="px-4 py-3 text-carbon/70" x-text="c.description || '—'"></td>
+                    <td class="px-4 py-3 text-carbon/80 font-semibold" x-text="couponDiscountLabel(c)"></td>
+                    <td class="px-4 py-3 text-carbon/70" x-text="c.applies_to === 'order' ? 'Total del pedido' : (c.items_count + ' producto(s)/categoría(s)')"></td>
+                    <td class="px-4 py-3 text-center text-carbon/70" x-text="c.uses_count + (c.max_uses != null ? ' / ' + c.max_uses : '')"></td>
+                    <td class="px-4 py-3 text-carbon/60 text-xs" x-text="couponValidity(c)"></td>
+                    <td class="px-4 py-3 text-center">
+                      <span :class="c.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'" class="inline-flex text-[11px] font-semibold px-2 py-1 rounded-full" x-text="c.active ? 'Activo' : 'Inactivo'"></span>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+          <div x-show="coupons.length === 0" class="text-center py-12 text-carbon/60">
+            <i data-lucide="ticket" class="w-10 h-10 mx-auto mb-3 text-navy/30"></i>
+            Aún no hay cupones. Creá el primero con el botón arriba.
+          </div>
+        </div>
+      </div>
+
       <!-- Settings -->
       <div x-show="tab==='settings'">
         <h1 class="font-display font-bold text-3xl text-navy mb-6">Ajustes de la tienda</h1>
@@ -1084,6 +1131,189 @@
     </div>
   </div>
 
+  <!-- Modal cupón -->
+  <div x-show="couponModalOpen" x-cloak @keydown.escape.window="couponModalOpen=false" class="fixed inset-0 bg-navy/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div @click.outside="couponModalOpen=false" class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl my-8">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-navy/10">
+        <div>
+          <h2 class="font-display font-bold text-xl text-navy" x-text="editingCoupon?.id ? 'Editar cupón' : 'Nuevo cupón'"></h2>
+          <p class="text-xs text-carbon/60 mt-0.5">Generá descuentos por código aplicables al total, por categoría o por producto.</p>
+        </div>
+        <button @click="couponModalOpen=false" class="w-8 h-8 rounded-full hover:bg-navy/5 flex items-center justify-center">
+          <i data-lucide="x" class="w-5 h-5 text-carbon/60"></i>
+        </button>
+      </div>
+      <form @submit.prevent="saveCoupon()" class="p-6 space-y-5">
+
+        <!-- Código + descripción -->
+        <div class="grid md:grid-cols-3 gap-4">
+          <div>
+            <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Código *</label>
+            <input x-model="editingCoupon.code" required type="text" placeholder="VERANO20" maxlength="40" class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm font-mono uppercase focus:border-azul focus:outline-none">
+          </div>
+          <div class="md:col-span-2">
+            <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Descripción</label>
+            <input x-model="editingCoupon.description" type="text" placeholder="Promo de verano - 20% off" class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Tipo de descuento -->
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Tipo de descuento *</label>
+            <div class="flex gap-2">
+              <label class="flex-1 flex items-center justify-center gap-2 border-2 rounded-lg px-3 py-2 cursor-pointer text-sm font-semibold" :class="editingCoupon.discount_type === 'percent' ? 'border-azul bg-azul/5 text-azul' : 'border-navy/15 text-carbon/70'">
+                <input type="radio" x-model="editingCoupon.discount_type" value="percent" class="sr-only">
+                <i data-lucide="percent" class="w-4 h-4"></i> Porcentaje
+              </label>
+              <label class="flex-1 flex items-center justify-center gap-2 border-2 rounded-lg px-3 py-2 cursor-pointer text-sm font-semibold" :class="editingCoupon.discount_type === 'fixed' ? 'border-azul bg-azul/5 text-azul' : 'border-navy/15 text-carbon/70'">
+                <input type="radio" x-model="editingCoupon.discount_type" value="fixed" class="sr-only">
+                <i data-lucide="dollar-sign" class="w-4 h-4"></i> Monto fijo
+              </label>
+            </div>
+          </div>
+          <div x-show="editingCoupon.discount_type === 'percent'">
+            <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Porcentaje (%) *</label>
+            <input x-model.number="editingCoupon.discount_percent" type="number" step="0.01" min="0.01" max="100" placeholder="20" class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+          </div>
+          <div x-show="editingCoupon.discount_type === 'fixed'">
+            <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Monto fijo (USD) *</label>
+            <input x-model.number="editingCouponFixedDollars" type="number" step="0.01" min="0.01" placeholder="10.00" class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Aplica a -->
+        <div>
+          <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-2">Aplica a *</label>
+          <div class="grid grid-cols-2 gap-2 mb-3">
+            <label class="flex items-center justify-center gap-2 border-2 rounded-lg px-3 py-2 cursor-pointer text-sm font-semibold" :class="editingCoupon.applies_to === 'order' ? 'border-azul bg-azul/5 text-azul' : 'border-navy/15 text-carbon/70'">
+              <input type="radio" x-model="editingCoupon.applies_to" value="order" class="sr-only">
+              <i data-lucide="shopping-cart" class="w-4 h-4"></i> Total del pedido
+            </label>
+            <label class="flex items-center justify-center gap-2 border-2 rounded-lg px-3 py-2 cursor-pointer text-sm font-semibold" :class="editingCoupon.applies_to === 'items' ? 'border-azul bg-azul/5 text-azul' : 'border-navy/15 text-carbon/70'">
+              <input type="radio" x-model="editingCoupon.applies_to" value="items" class="sr-only">
+              <i data-lucide="package" class="w-4 h-4"></i> Productos / categorías específicas
+            </label>
+          </div>
+
+          <div x-show="editingCoupon.applies_to === 'items'" class="space-y-3 border-l-4 border-azul pl-4">
+            <div>
+              <label class="text-[10px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Categorías</label>
+              <div class="flex flex-wrap gap-2">
+                <template x-for="cat in categories" :key="cat.slug">
+                  <label class="flex items-center gap-1.5 px-3 py-1 rounded-full border-2 cursor-pointer text-xs"
+                         :class="couponItemSelected('category', cat.slug) ? 'border-azul bg-azul/10 text-azul' : 'border-navy/15 text-carbon/70'">
+                    <input type="checkbox" :checked="couponItemSelected('category', cat.slug)" @change="toggleCouponItem('category', cat.slug)" class="sr-only">
+                    <i data-lucide="folder" class="w-3 h-3"></i>
+                    <span x-text="cat.name_es || cat.slug"></span>
+                  </label>
+                </template>
+              </div>
+            </div>
+            <div>
+              <label class="text-[10px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Productos individuales</label>
+              <input x-model="couponProductSearch" type="text" placeholder="Buscar por nombre o slug..." class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm mb-2 focus:border-azul focus:outline-none">
+              <div class="max-h-40 overflow-y-auto border border-navy/10 rounded-lg">
+                <template x-for="p in filteredCouponProducts" :key="p.slug">
+                  <label class="flex items-center gap-2 px-3 py-2 hover:bg-navy/5 cursor-pointer text-sm border-b border-navy/5 last:border-0">
+                    <input type="checkbox" :checked="couponItemSelected('product', p.slug)" @change="toggleCouponItem('product', p.slug)" class="w-4 h-4 accent-azul">
+                    <span class="font-mono text-[11px] text-carbon/60 w-20 truncate" x-text="p.slug"></span>
+                    <span class="flex-1 truncate font-medium text-navy" x-text="p.name"></span>
+                    <span class="text-xs text-carbon/50" x-text="money(p.price_cents)"></span>
+                  </label>
+                </template>
+                <div x-show="filteredCouponProducts.length === 0" class="px-3 py-3 text-xs text-carbon/50 italic text-center">Sin coincidencias.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Restricciones -->
+        <div class="grid md:grid-cols-3 gap-4">
+          <div>
+            <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Pedido mínimo (USD)</label>
+            <input x-model.number="editingCouponMinDollars" type="number" step="0.01" min="0" placeholder="0" class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+          </div>
+          <div>
+            <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Usos máximos</label>
+            <input x-model.number="editingCoupon.max_uses" type="number" min="1" placeholder="ilimitado" class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+          </div>
+          <div class="flex items-end">
+            <label class="flex items-center gap-2 text-sm font-semibold text-navy">
+              <input type="checkbox" x-model="editingCoupon.active" class="w-4 h-4 accent-azul">
+              Activo
+            </label>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Inicio (opcional)</label>
+            <input x-model="editingCoupon.starts_at" type="datetime-local" class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+          </div>
+          <div>
+            <label class="text-[11px] uppercase tracking-wider text-carbon/60 font-semibold block mb-1">Vencimiento (opcional)</label>
+            <input x-model="editingCoupon.expires_at" type="datetime-local" class="w-full border-2 border-navy/15 rounded-lg px-3 py-2 text-sm focus:border-azul focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Preview pérdidas -->
+        <div class="border-t border-navy/10 pt-4">
+          <button type="button" @click="previewCouponLoss()" :disabled="lossLoading" class="bg-amber/15 hover:bg-amber/25 text-orange-700 font-semibold px-4 py-2 rounded-full text-sm flex items-center gap-2 disabled:opacity-50">
+            <i data-lucide="alert-triangle" class="w-4 h-4" :class="lossLoading ? 'animate-pulse' : ''"></i>
+            <span x-text="lossLoading ? 'Calculando...' : 'Verificar productos en pérdida'"></span>
+          </button>
+
+          <div x-show="lossPreview" x-cloak class="mt-3">
+            <div :class="lossPreview?.summary?.in_loss > 0 ? 'bg-red-50 border-red-300 text-red-800' : 'bg-green-50 border-green-300 text-green-800'" class="border-2 rounded-lg px-4 py-3 text-sm font-semibold flex items-center gap-2">
+              <i :data-lucide="lossPreview?.summary?.in_loss > 0 ? 'alert-triangle' : 'check-circle'" class="w-5 h-5"></i>
+              <span x-show="lossPreview?.summary?.in_loss > 0" x-text="lossPreview.summary.in_loss + ' producto(s) se venderían en pérdida con este descuento'"></span>
+              <span x-show="lossPreview?.summary?.in_loss === 0" x-text="'Sin pérdidas. ' + (lossPreview?.summary?.total || 0) + ' producto(s) evaluados.'"></span>
+            </div>
+            <div x-show="lossPreview?.products?.length > 0" class="mt-2 border border-red-200 rounded-lg overflow-hidden">
+              <table class="w-full text-xs">
+                <thead class="bg-red-50 text-red-900 uppercase text-[10px] tracking-wider">
+                  <tr>
+                    <th class="text-left font-semibold px-3 py-2">Producto</th>
+                    <th class="text-right font-semibold px-3 py-2">Costo</th>
+                    <th class="text-right font-semibold px-3 py-2">Precio</th>
+                    <th class="text-right font-semibold px-3 py-2">Precio final</th>
+                    <th class="text-right font-semibold px-3 py-2">Pérdida</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="p in (lossPreview?.products || [])" :key="p.id">
+                    <tr class="border-t border-red-100">
+                      <td class="px-3 py-2 truncate max-w-[260px]" x-text="p.name"></td>
+                      <td class="px-3 py-2 text-right text-carbon/70" x-text="money(p.cost_cents)"></td>
+                      <td class="px-3 py-2 text-right text-carbon/70" x-text="money(p.price_cents)"></td>
+                      <td class="px-3 py-2 text-right font-semibold text-red-700" x-text="money(p.final_price_cents)"></td>
+                      <td class="px-3 py-2 text-right font-bold text-red-700" x-text="'-' + money(p.loss_cents)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <p x-show="couponFormError" x-text="couponFormError" class="text-sm text-red-600 bg-red-50 p-3 rounded-lg"></p>
+
+        <div class="flex justify-between items-center pt-4 border-t border-navy/10">
+          <button type="button" x-show="editingCoupon?.id" @click="deleteCoupon()" class="text-red-600 hover:text-red-800 text-sm font-semibold flex items-center gap-1.5">
+            <i data-lucide="trash-2" class="w-4 h-4"></i> Eliminar
+          </button>
+          <div class="flex gap-2 ml-auto">
+            <button type="button" @click="couponModalOpen=false" class="px-4 py-2 text-sm font-semibold text-carbon/70 hover:text-carbon">Cancelar</button>
+            <button type="submit" :disabled="couponSaving" class="btn-primary text-navy-deep font-bold px-6 py-2 rounded-full text-sm disabled:opacity-50">
+              <span x-text="couponSaving ? 'Guardando...' : (editingCoupon?.id ? 'Guardar' : 'Crear cupón')"></span>
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Modal categoría -->
   <div x-show="catModalOpen" x-cloak @keydown.escape.window="catModalOpen=false" class="fixed inset-0 bg-navy/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
     <div @click.outside="catModalOpen=false" class="bg-white rounded-2xl shadow-2xl w-full max-w-lg my-8">
@@ -1375,6 +1605,13 @@
       catModalOpen: false, editingCat: {}, catSaving: false, catFormError: '',
       settings: {}, settingsSaving: false, settingsSaved: false, settingsError: '',
       smtpTesting: false, smtpMsg: '', smtpOk: true,
+
+      // Cupones
+      coupons: [],
+      couponModalOpen: false, editingCoupon: {}, couponSaving: false, couponFormError: '',
+      editingCouponFixedDollars: 0, editingCouponMinDollars: 0,
+      couponProductSearch: '',
+      lossPreview: null, lossLoading: false,
 
       // Compras
       comprasView: 'suppliers',
@@ -1967,6 +2204,191 @@
         if (!s) return '—';
         try { return new Date(s).toLocaleDateString('es-US', { day: '2-digit', month: 'short', year: 'numeric' }); }
         catch { return s; }
+      },
+
+      // ===== Cupones =====
+      async loadCoupons() {
+        const r = await fetch(`${API}/admin/coupons`, { headers: this.authHeaders() });
+        const j = await r.json();
+        this.coupons = j.success ? j.data : [];
+        if (!this.categories.length) await this.loadCategories();
+        if (!this.products.length) await this.loadProducts();
+        this.$nextTick(() => lucide.createIcons());
+      },
+
+      get filteredCouponProducts() {
+        const q = (this.couponProductSearch || '').trim().toLowerCase();
+        const list = this.products || [];
+        if (!q) return list.slice(0, 50);
+        return list.filter(p => `${p.name || ''} ${p.slug || ''} ${p.brand || ''}`.toLowerCase().includes(q)).slice(0, 50);
+      },
+
+      couponItemSelected(type, value) {
+        return (this.editingCoupon.items || []).some(i => i.item_type === type && i.item_value === value);
+      },
+      toggleCouponItem(type, value) {
+        const items = this.editingCoupon.items || [];
+        const idx = items.findIndex(i => i.item_type === type && i.item_value === value);
+        if (idx >= 0) items.splice(idx, 1);
+        else items.push({ item_type: type, item_value: value });
+        this.editingCoupon.items = items;
+        this.lossPreview = null;
+      },
+
+      couponDiscountLabel(c) {
+        if (c.discount_type === 'percent') return `${Number(c.discount_percent)}%`;
+        return money(c.discount_cents) + ' off';
+      },
+      couponValidity(c) {
+        const fmt = s => s ? new Date(s).toLocaleDateString('es-US', { day: '2-digit', month: 'short' }) : null;
+        const start = fmt(c.starts_at);
+        const end = fmt(c.expires_at);
+        if (start && end) return `${start} → ${end}`;
+        if (end) return `Hasta ${end}`;
+        if (start) return `Desde ${start}`;
+        return 'Sin límite';
+      },
+
+      openNewCoupon() {
+        this.editingCoupon = {
+          code: '',
+          description: '',
+          discount_type: 'percent',
+          discount_percent: 10,
+          discount_cents: 0,
+          applies_to: 'order',
+          min_order_cents: null,
+          max_uses: null,
+          starts_at: '',
+          expires_at: '',
+          active: true,
+          items: []
+        };
+        this.editingCouponFixedDollars = 0;
+        this.editingCouponMinDollars = 0;
+        this.lossPreview = null;
+        this.couponFormError = '';
+        this.couponProductSearch = '';
+        this.couponModalOpen = true;
+        this.$nextTick(() => lucide.createIcons());
+      },
+
+      async editCoupon(c) {
+        // Cargar items completos
+        const r = await fetch(`${API}/admin/coupons/${c.id}`, { headers: this.authHeaders() });
+        const j = await r.json();
+        const full = j.success ? j.data : c;
+        const toLocal = s => {
+          if (!s) return '';
+          const d = new Date(s);
+          const pad = n => String(n).padStart(2, '0');
+          return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        };
+        this.editingCoupon = {
+          id: full.id,
+          code: full.code,
+          description: full.description || '',
+          discount_type: full.discount_type,
+          discount_percent: Number(full.discount_percent) || 0,
+          discount_cents: Number(full.discount_cents) || 0,
+          applies_to: full.applies_to,
+          min_order_cents: full.min_order_cents,
+          max_uses: full.max_uses,
+          starts_at: toLocal(full.starts_at),
+          expires_at: toLocal(full.expires_at),
+          active: !!full.active,
+          items: full.items || []
+        };
+        this.editingCouponFixedDollars = (full.discount_cents || 0) / 100;
+        this.editingCouponMinDollars = (full.min_order_cents || 0) / 100;
+        this.lossPreview = null;
+        this.couponFormError = '';
+        this.couponProductSearch = '';
+        this.couponModalOpen = true;
+        if (!this.products.length) await this.loadProducts();
+        this.$nextTick(() => lucide.createIcons());
+      },
+
+      buildCouponPayload() {
+        const c = this.editingCoupon;
+        return {
+          code: (c.code || '').trim().toUpperCase(),
+          description: c.description || '',
+          discount_type: c.discount_type,
+          discount_percent: c.discount_type === 'percent' ? Number(c.discount_percent) : null,
+          discount_cents: c.discount_type === 'fixed' ? Math.round(Number(this.editingCouponFixedDollars) * 100) : null,
+          applies_to: c.applies_to,
+          min_order_cents: this.editingCouponMinDollars ? Math.round(Number(this.editingCouponMinDollars) * 100) : null,
+          max_uses: c.max_uses || null,
+          starts_at: c.starts_at || null,
+          expires_at: c.expires_at || null,
+          active: !!c.active,
+          items: c.applies_to === 'items' ? (c.items || []) : []
+        };
+      },
+
+      async previewCouponLoss() {
+        if (this.lossLoading) return;
+        this.lossLoading = true;
+        this.lossPreview = null;
+        try {
+          const r = await fetch(`${API}/admin/coupons/preview-loss`, {
+            method: 'POST',
+            headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(this.buildCouponPayload())
+          });
+          const j = await r.json();
+          if (!j.success) throw new Error(j.error || 'Error al calcular');
+          this.lossPreview = j.data;
+          this.$nextTick(() => lucide.createIcons());
+        } catch (e) {
+          this.couponFormError = e.message;
+        } finally {
+          this.lossLoading = false;
+        }
+      },
+
+      async saveCoupon() {
+        if (this.couponSaving) return;
+        this.couponSaving = true;
+        this.couponFormError = '';
+        const payload = this.buildCouponPayload();
+        const url = this.editingCoupon.id
+          ? `${API}/admin/coupons/${this.editingCoupon.id}`
+          : `${API}/admin/coupons`;
+        const method = this.editingCoupon.id ? 'PUT' : 'POST';
+        try {
+          const r = await fetch(url, {
+            method,
+            headers: { ...this.authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const j = await r.json();
+          if (!j.success) throw new Error(j.error || 'Error al guardar');
+          this.couponModalOpen = false;
+          await this.loadCoupons();
+        } catch (e) {
+          this.couponFormError = e.message;
+        } finally {
+          this.couponSaving = false;
+        }
+      },
+
+      async deleteCoupon() {
+        if (!this.editingCoupon?.id) return;
+        if (!confirm(`¿Eliminar el cupón "${this.editingCoupon.code}"? Esta acción no se puede deshacer.`)) return;
+        try {
+          const r = await fetch(`${API}/admin/coupons/${this.editingCoupon.id}`, {
+            method: 'DELETE',
+            headers: this.authHeaders()
+          });
+          const j = await r.json();
+          if (!j.success) throw new Error(j.error || 'Error al eliminar');
+          this.couponModalOpen = false;
+          await this.loadCoupons();
+        } catch (e) {
+          this.couponFormError = e.message;
+        }
       },
 
       // ===== Compras =====

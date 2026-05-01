@@ -162,6 +162,38 @@ export async function initDb() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS coupons (
+      id                INT PRIMARY KEY AUTO_INCREMENT,
+      code              VARCHAR(40) NOT NULL UNIQUE,
+      description       VARCHAR(200),
+      discount_type     VARCHAR(20) NOT NULL,
+      discount_percent  DECIMAL(5,2) NULL,
+      discount_cents    INT NULL,
+      applies_to        VARCHAR(20) NOT NULL DEFAULT 'order',
+      min_order_cents   INT NULL,
+      max_uses          INT NULL,
+      uses_count        INT NOT NULL DEFAULT 0,
+      starts_at         TIMESTAMP NULL,
+      expires_at        TIMESTAMP NULL,
+      active            TINYINT NOT NULL DEFAULT 1,
+      created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_coupons_code (code),
+      INDEX idx_coupons_active (active)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS coupon_items (
+      coupon_id   INT NOT NULL,
+      item_type   VARCHAR(20) NOT NULL,
+      item_value  VARCHAR(120) NOT NULL,
+      PRIMARY KEY (coupon_id, item_type, item_value),
+      CONSTRAINT fk_coupon_items_coupon FOREIGN KEY (coupon_id) REFERENCES coupons(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS purchase_items (
       id                    INT PRIMARY KEY AUTO_INCREMENT,
       purchase_id           INT NOT NULL,
@@ -188,6 +220,10 @@ export async function initDb() {
   await ensureColumn('products', 'cost_cents', 'INT NULL');
   await ensureColumn('products', 'sold_out_at', 'TIMESTAMP NULL');
   await ensureIndex('products', 'idx_products_sold_out_at', 'sold_out_at');
+  // Cupones aplicados a pedidos
+  await ensureColumn('orders', 'coupon_id', 'INT NULL');
+  await ensureColumn('orders', 'coupon_code', 'VARCHAR(40) NULL');
+  await ensureColumn('orders', 'discount_cents', 'INT NOT NULL DEFAULT 0');
   // Fulfillment / envío de pedidos
   await ensureColumn('orders', 'fulfillment_status', "VARCHAR(32) NOT NULL DEFAULT 'unfulfilled'");
   await ensureColumn('orders', 'shipping_carrier', 'VARCHAR(40) NULL');

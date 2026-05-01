@@ -42,12 +42,12 @@
       window.dispatchEvent(new CustomEvent('cart:update', { detail: { count: this.count(), total: this.total() } }));
     },
 
-    async checkoutStripe() {
+    async checkoutStripe(extra = {}) {
       const items = this.items().map(i => ({ slug: i.slug, quantity: i.quantity }));
       const res = await fetch(`${API}/checkout/session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items })
+        body: JSON.stringify({ items, ...extra })
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);

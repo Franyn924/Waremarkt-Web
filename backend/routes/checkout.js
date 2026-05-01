@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import Stripe from 'stripe';
 import { pool, getSetting, getAllSettings } from '../db/schema.js';
+import { loadCoupon, evaluateCoupon } from '../services/coupons.js';
 
 export const checkoutRouter = Router();
 
@@ -52,10 +53,52 @@ async function resolveCart(items) {
     const p = rows[0];
     if (!p) throw new Error(`Producto no encontrado: ${slug}`);
     if (p.stock < qty) throw new Error(`Stock insuficiente: ${p.name}`);
-    orderItems.push({ slug: p.slug, name: p.name, price_cents: p.price_cents, quantity: qty, sku: p.sku || null });
+    orderItems.push({
+      slug: p.slug, name: p.name, price_cents: p.price_cents,
+      quantity: qty, sku: p.sku || null, category: p.category
+    });
   }
   const subtotal = orderItems.reduce((s, i) => s + i.price_cents * i.quantity, 0);
   return { orderItems, subtotal };
+}
+
+// Si viene coupon_code, valida y devuelve { coupon, discount_cents, eligible_slugs }.
+// Si no aplica → throw con mensaje. Si no viene código → null.
+async function applyCouponToCart(couponCode, orderItems) {
+  if (!couponCode) return null;
+  const coupon = await loadCoupon(couponCode);
+  if (!coupon) throw new Error('Cupón inválido');
+  const result = evaluateCoupon(coupon, orderItems);
+  if (!result.ok) throw new Error(result.error);
+  return {
+    coupon_id: coupon.id,
+    coupon_code: coupon.code,
+    discount_cents: result.discount_cents,
+    eligible_slugs: new Set(result.eligible_slugs)
+  };
+}
+
+// Distribuye el descuento total proporcionalmente entre las líneas elegibles.
+// Devuelve un Map<slug, discountCents>. La última línea absorbe el residuo.
+function distributeDiscount(orderItems, totalDiscount, eligibleSlugs) {
+  const out = new Map();
+  if (!totalDiscount || !eligibleSlugs?.size) return out;
+  const eligible = orderItems.filter(i => eligibleSlugs.has(i.slug));
+  const eligibleSubtotal = eligible.reduce((s, i) => s + i.price_cents * i.quantity, 0);
+  if (!eligibleSubtotal) return out;
+  let assigned = 0;
+  eligible.forEach((it, idx) => {
+    const lineTotal = it.price_cents * it.quantity;
+    let lineDisc;
+    if (idx === eligible.length - 1) {
+      lineDisc = totalDiscount - assigned;
+    } else {
+      lineDisc = Math.round(totalDiscount * lineTotal / eligibleSubtotal);
+      assigned += lineDisc;
+    }
+    out.set(it.slug, lineDisc);
+  });
+  return out;
 }
 
 function shippingDetailsFromCustomer(c) {
@@ -83,7 +126,7 @@ checkoutRouter.post('/session', async (req, res, next) => {
       });
     }
 
-    const { items } = req.body;
+    const { items, coupon_code } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, error: 'Carrito vacío' });
     }
@@ -95,7 +138,6 @@ checkoutRouter.post('/session', async (req, res, next) => {
     const successPath = (await getSetting('checkout_success_url', '/success.html')) || '/success.html';
     const cancelPath = (await getSetting('checkout_cancel_url', '/cancel.html')) || '/cancel.html';
 
-    const line_items = [];
     const orderItems = [];
 
     for (const { slug, quantity } of items) {
@@ -103,18 +145,28 @@ checkoutRouter.post('/session', async (req, res, next) => {
       const p = rows[0];
       if (!p) return res.status(400).json({ success: false, error: `Producto no encontrado: ${slug}` });
       if (p.stock < quantity) return res.status(400).json({ success: false, error: `Stock insuficiente: ${p.name}` });
-
-      const product_data = { name: p.name, description: p.brand ? `${p.brand} · ${p.category}` : p.category };
-      if (taxEnabled) product_data.tax_code = 'txcd_99999999';
-      const price_data = { currency, product_data, unit_amount: p.price_cents };
-      if (taxEnabled) price_data.tax_behavior = taxBehavior;
-
-      line_items.push({
-        price_data,
-        quantity: Math.max(1, Number(quantity) || 1)
-      });
-      orderItems.push({ slug: p.slug, name: p.name, price_cents: p.price_cents, quantity });
+      orderItems.push({ slug: p.slug, name: p.name, price_cents: p.price_cents, quantity, brand: p.brand, category: p.category });
     }
+
+    let coupon = null;
+    try { coupon = await applyCouponToCart(coupon_code, orderItems); }
+    catch (e) { return res.status(400).json({ success: false, error: e.message }); }
+
+    // Descuentos por línea (proporcional al subtotal de las líneas elegibles)
+    const lineDiscounts = coupon ? distributeDiscount(orderItems, coupon.discount_cents, coupon.eligible_slugs) : new Map();
+
+    const line_items = orderItems.map(i => {
+      const lineDisc = lineDiscounts.get(i.slug) || 0;
+      // Reducimos unit_amount proporcionalmente. La última unidad absorbe residuos.
+      let perUnitDiscount = 0;
+      if (lineDisc > 0 && i.quantity > 0) perUnitDiscount = Math.floor(lineDisc / i.quantity);
+      const adjustedUnit = Math.max(0, i.price_cents - perUnitDiscount);
+      const product_data = { name: i.name, description: i.brand ? `${i.brand} · ${i.category}` : i.category };
+      if (taxEnabled) product_data.tax_code = 'txcd_99999999';
+      const price_data = { currency, product_data, unit_amount: adjustedUnit };
+      if (taxEnabled) price_data.tax_behavior = taxBehavior;
+      return { price_data, quantity: i.quantity };
+    });
 
     const frontendUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
 
@@ -125,7 +177,10 @@ checkoutRouter.post('/session', async (req, res, next) => {
       shipping_address_collection: { allowed_countries: ['US', 'MX', 'CO', 'AR', 'PE', 'CL', 'EC', 'VE', 'UY', 'PY', 'BO', 'CR', 'PA', 'DO', 'GT', 'HN', 'SV', 'NI', 'PR'] },
       success_url: `${frontendUrl}${successPath}${successPath.includes('?') ? '&' : '?'}session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendUrl}${cancelPath}`,
-      metadata: { items: JSON.stringify(orderItems.map(i => ({ s: i.slug, q: i.quantity }))) }
+      metadata: {
+        items: JSON.stringify(orderItems.map(i => ({ s: i.slug, q: i.quantity }))),
+        ...(coupon ? { coupon_code: coupon.coupon_code, discount_cents: String(coupon.discount_cents) } : {})
+      }
     };
 
     if (taxEnabled) sessionPayload.automatic_tax = { enabled: true };
@@ -144,11 +199,15 @@ checkoutRouter.post('/session', async (req, res, next) => {
 
     const session = await stripe.checkout.sessions.create(sessionPayload);
 
-    const total = orderItems.reduce((s, i) => s + i.price_cents * i.quantity, 0);
+    const subtotal = orderItems.reduce((s, i) => s + i.price_cents * i.quantity, 0);
+    const total = subtotal - (coupon?.discount_cents || 0);
     await pool.execute(
-      `INSERT INTO orders (stripe_session_id, payment_provider, amount_total_cents, currency, status, items_json)
-       VALUES (?, 'stripe', ?, ?, 'pending', ?)`,
-      [session.id, total, currency, JSON.stringify(orderItems)]
+      `INSERT INTO orders
+         (stripe_session_id, payment_provider, amount_total_cents, currency,
+          status, items_json, coupon_id, coupon_code, discount_cents)
+       VALUES (?, 'stripe', ?, ?, 'pending', ?, ?, ?, ?)`,
+      [session.id, total, currency, JSON.stringify(orderItems),
+       coupon?.coupon_id || null, coupon?.coupon_code || null, coupon?.discount_cents || 0]
     );
 
     res.json({ success: true, data: { id: session.id, url: session.url } });
@@ -176,25 +235,31 @@ checkoutRouter.get('/session/:id', async (req, res, next) => {
 
 checkoutRouter.post('/transfer', async (req, res, next) => {
   try {
-    const { items, customer } = req.body || {};
+    const { items, customer, coupon_code } = req.body || {};
     const cust = sanitizeCustomer(customer);
     const { orderItems, subtotal } = await resolveCart(items);
+    const coupon = await applyCouponToCart(coupon_code, orderItems);
+    const total = subtotal - (coupon?.discount_cents || 0);
     const settings = await getAllSettings();
     const currency = (settings.currency || 'usd').toLowerCase();
 
     const [result] = await pool.execute(
       `INSERT INTO orders
          (payment_provider, amount_total_cents, currency, status, items_json,
-          customer_email, customer_name, customer_phone, shipping_json)
-       VALUES ('transfer', ?, ?, 'pending_transfer', ?, ?, ?, ?, ?)`,
+          customer_email, customer_name, customer_phone, shipping_json,
+          coupon_id, coupon_code, discount_cents)
+       VALUES ('transfer', ?, ?, 'pending_transfer', ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        subtotal,
+        total,
         currency,
         JSON.stringify(orderItems),
         cust.email,
         cust.name,
         cust.phone,
-        JSON.stringify(shippingDetailsFromCustomer(cust))
+        JSON.stringify(shippingDetailsFromCustomer(cust)),
+        coupon?.coupon_id || null,
+        coupon?.coupon_code || null,
+        coupon?.discount_cents || 0
       ]
     );
 
@@ -203,7 +268,10 @@ checkoutRouter.post('/transfer', async (req, res, next) => {
       data: {
         order_id: result.insertId,
         order_number: orderNumber(result.insertId),
-        total_cents: subtotal,
+        subtotal_cents: subtotal,
+        discount_cents: coupon?.discount_cents || 0,
+        coupon_code: coupon?.coupon_code || null,
+        total_cents: total,
         currency,
         instructions: {
           zelle_email: settings.zelle_email || '',
@@ -239,24 +307,30 @@ checkoutRouter.post('/nowpayments', async (req, res, next) => {
       return res.status(503).json({ success: false, error: 'Falta NowPayments API key en Ajustes' });
     }
 
-    const { items, customer } = req.body || {};
+    const { items, customer, coupon_code } = req.body || {};
     const cust = sanitizeCustomer(customer);
     const { orderItems, subtotal } = await resolveCart(items);
+    const coupon = await applyCouponToCart(coupon_code, orderItems);
+    const total = subtotal - (coupon?.discount_cents || 0);
     const currency = (settings.currency || 'usd').toLowerCase();
 
     const [result] = await pool.execute(
       `INSERT INTO orders
          (payment_provider, amount_total_cents, currency, status, items_json,
-          customer_email, customer_name, customer_phone, shipping_json)
-       VALUES ('nowpayments', ?, ?, 'pending', ?, ?, ?, ?, ?)`,
+          customer_email, customer_name, customer_phone, shipping_json,
+          coupon_id, coupon_code, discount_cents)
+       VALUES ('nowpayments', ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        subtotal,
+        total,
         currency,
         JSON.stringify(orderItems),
         cust.email,
         cust.name,
         cust.phone,
-        JSON.stringify(shippingDetailsFromCustomer(cust))
+        JSON.stringify(shippingDetailsFromCustomer(cust)),
+        coupon?.coupon_id || null,
+        coupon?.coupon_code || null,
+        coupon?.discount_cents || 0
       ]
     );
     const orderId = result.insertId;
@@ -268,7 +342,7 @@ checkoutRouter.post('/nowpayments', async (req, res, next) => {
     const base = sandbox ? NOWPAYMENTS_BASE_SANDBOX : NOWPAYMENTS_BASE_LIVE;
 
     const invoicePayload = {
-      price_amount: Number((subtotal / 100).toFixed(2)),
+      price_amount: Number((total / 100).toFixed(2)),
       price_currency: currency,
       order_id: String(orderId),
       order_description: `Waremarkt ${orderNumber(orderId)} — ${orderItems.length} producto(s)`,

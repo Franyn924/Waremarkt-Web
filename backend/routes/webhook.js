@@ -4,6 +4,7 @@ import Stripe from 'stripe';
 import { pool, getAllSettings } from '../db/schema.js';
 import { sendOrderConfirmation, sendAdminOrderNotification } from '../services/mailer.js';
 import { applyStockTransitionEffects } from '../services/stock.js';
+import { incrementCouponUse } from '../services/coupons.js';
 
 export const webhookRouter = Router();
 
@@ -31,6 +32,9 @@ export async function markOrderPaid(orderId, { providerSession = null } = {}) {
       );
       await applyStockTransitionEffects(i.slug);
     }
+  }
+  if (o.coupon_id) {
+    await incrementCouponUse(o.coupon_id).catch(err => console.error('[markOrderPaid] couponUse error:', err.message));
   }
 
   // Enriquecer items con SKU para emails

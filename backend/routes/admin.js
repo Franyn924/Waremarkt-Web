@@ -11,6 +11,7 @@ import { buildDailyReport } from '../services/dailyReport.js';
 import { sendDailySalesReport, sendRaw, invalidateMailerCache, sendFulfillmentUpdate } from '../services/mailer.js';
 import { markOrderPaid } from './webhook.js';
 import { applyStockTransitionEffects } from '../services/stock.js';
+import { loadCoupon, evaluateCoupon, previewLoss } from '../services/coupons.js';
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -498,6 +499,162 @@ adminRouter.post('/settings/smtp-test', async (req, res, next) => {
     }, { forceRefresh: true });
     res.json({ success: result.sent, data: result });
   } catch (err) { next(err); }
+});
+
+// ==== COUPONS ====
+
+const COUPON_TYPES = new Set(['percent', 'fixed']);
+const COUPON_APPLIES_TO = new Set(['order', 'items']);
+
+function sanitizeCoupon(body) {
+  const code = String(body.code || '').trim().toUpperCase();
+  if (!/^[A-Z0-9_-]{3,40}$/.test(code)) throw new Error('Código inválido (3-40 chars: A-Z, 0-9, _ o -)');
+  const discount_type = String(body.discount_type || '').toLowerCase();
+  if (!COUPON_TYPES.has(discount_type)) throw new Error('discount_type debe ser "percent" o "fixed"');
+  const applies_to = String(body.applies_to || 'order').toLowerCase();
+  if (!COUPON_APPLIES_TO.has(applies_to)) throw new Error('applies_to debe ser "order" o "items"');
+
+  let discount_percent = null, discount_cents = null;
+  if (discount_type === 'percent') {
+    discount_percent = Number(body.discount_percent);
+    if (!(discount_percent > 0 && discount_percent <= 100)) throw new Error('discount_percent debe ser entre 0.01 y 100');
+  } else {
+    discount_cents = Math.round(Number(body.discount_cents));
+    if (!(discount_cents > 0)) throw new Error('discount_cents debe ser > 0');
+  }
+
+  const items = Array.isArray(body.items) ? body.items.filter(it =>
+    it && (it.item_type === 'product' || it.item_type === 'category') && it.item_value
+  ).map(it => ({ item_type: it.item_type, item_value: String(it.item_value).trim() })) : [];
+
+  if (applies_to === 'items' && items.length === 0) {
+    throw new Error('Para applies_to=items hay que indicar al menos un producto o categoría');
+  }
+
+  return {
+    code,
+    description: String(body.description || '').trim() || null,
+    discount_type,
+    discount_percent,
+    discount_cents,
+    applies_to,
+    min_order_cents: body.min_order_cents != null ? Math.max(0, Math.round(Number(body.min_order_cents))) : null,
+    max_uses: body.max_uses != null && body.max_uses !== '' ? Math.max(1, Math.round(Number(body.max_uses))) : null,
+    starts_at: body.starts_at || null,
+    expires_at: body.expires_at || null,
+    active: body.active === false || body.active === 0 ? 0 : 1,
+    items
+  };
+}
+
+adminRouter.get('/coupons', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT c.*,
+              (SELECT COUNT(*) FROM coupon_items ci WHERE ci.coupon_id = c.id) AS items_count
+         FROM coupons c
+         ORDER BY c.created_at DESC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+});
+
+adminRouter.get('/coupons/:id', async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute('SELECT * FROM coupons WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ success: false, error: 'Cupón no encontrado' });
+    const c = rows[0];
+    const [items] = await pool.execute('SELECT item_type, item_value FROM coupon_items WHERE coupon_id = ?', [c.id]);
+    res.json({ success: true, data: { ...c, items } });
+  } catch (err) { next(err); }
+});
+
+adminRouter.post('/coupons', async (req, res, next) => {
+  const conn = await pool.getConnection();
+  try {
+    const c = sanitizeCoupon(req.body);
+    await conn.beginTransaction();
+    const [r] = await conn.execute(
+      `INSERT INTO coupons
+         (code, description, discount_type, discount_percent, discount_cents,
+          applies_to, min_order_cents, max_uses, starts_at, expires_at, active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [c.code, c.description, c.discount_type, c.discount_percent, c.discount_cents,
+       c.applies_to, c.min_order_cents, c.max_uses, c.starts_at, c.expires_at, c.active]
+    );
+    for (const it of c.items) {
+      await conn.execute(
+        'INSERT INTO coupon_items (coupon_id, item_type, item_value) VALUES (?, ?, ?)',
+        [r.insertId, it.item_type, it.item_value]
+      );
+    }
+    await conn.commit();
+    res.status(201).json({ success: true, data: { id: r.insertId, ...c } });
+  } catch (e) {
+    await conn.rollback();
+    if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, error: 'Ya existe un cupón con ese código' });
+    if (e.message && e.statusCode == null) return res.status(400).json({ success: false, error: e.message });
+    next(e);
+  } finally {
+    conn.release();
+  }
+});
+
+adminRouter.put('/coupons/:id', async (req, res, next) => {
+  const conn = await pool.getConnection();
+  try {
+    const c = sanitizeCoupon(req.body);
+    await conn.beginTransaction();
+    const [r] = await conn.execute(
+      `UPDATE coupons SET
+         code=?, description=?, discount_type=?, discount_percent=?, discount_cents=?,
+         applies_to=?, min_order_cents=?, max_uses=?, starts_at=?, expires_at=?, active=?
+       WHERE id=?`,
+      [c.code, c.description, c.discount_type, c.discount_percent, c.discount_cents,
+       c.applies_to, c.min_order_cents, c.max_uses, c.starts_at, c.expires_at, c.active, req.params.id]
+    );
+    if (r.affectedRows === 0) {
+      await conn.rollback();
+      return res.status(404).json({ success: false, error: 'Cupón no encontrado' });
+    }
+    await conn.execute('DELETE FROM coupon_items WHERE coupon_id = ?', [req.params.id]);
+    for (const it of c.items) {
+      await conn.execute(
+        'INSERT INTO coupon_items (coupon_id, item_type, item_value) VALUES (?, ?, ?)',
+        [req.params.id, it.item_type, it.item_value]
+      );
+    }
+    await conn.commit();
+    res.json({ success: true, data: { id: Number(req.params.id), ...c } });
+  } catch (e) {
+    await conn.rollback();
+    if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, error: 'Ya existe un cupón con ese código' });
+    if (e.message && e.statusCode == null) return res.status(400).json({ success: false, error: e.message });
+    next(e);
+  } finally {
+    conn.release();
+  }
+});
+
+adminRouter.delete('/coupons/:id', async (req, res, next) => {
+  try {
+    const [r] = await pool.execute('DELETE FROM coupons WHERE id = ?', [req.params.id]);
+    if (r.affectedRows === 0) return res.status(404).json({ success: false, error: 'Cupón no encontrado' });
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// Preview: lista productos que se venderían en pérdida con el cupón propuesto.
+// Body = mismo formato que POST /coupons (sin guardarlo).
+adminRouter.post('/coupons/preview-loss', async (req, res, next) => {
+  try {
+    const c = sanitizeCoupon(req.body);
+    const result = await previewLoss(c);
+    res.json({ success: true, data: result });
+  } catch (e) {
+    if (e.message && e.statusCode == null) return res.status(400).json({ success: false, error: e.message });
+    next(e);
+  }
 });
 
 // ==== ORDERS ====
