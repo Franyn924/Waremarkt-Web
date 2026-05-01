@@ -18,46 +18,37 @@ const INVOICE = {
     tax_id: null,
     contact: 'contact@888lots.com | 1-844-888-5687 | 1416 East Linden Ave, Linden, NJ 07036',
     payment_terms: 'Pago al ordenar',
-    notes: 'Proveedor US. Envío incluido en factura. A veces lista líneas con qty 0 (productos pedidos pero no enviados).'
+    notes: 'Proveedor US. Envío incluido en factura. Líneas con qty 0 → pedido pero no enviado (ignorar).'
   },
   purchase: {
-    invoice_number: 'WI0290331',
-    issue_date: '2026-01-23',
+    invoice_number: 'WI0290109',
+    issue_date: '2026-01-21',
     due_date: null,
     currency: 'usd',
-    subtotal_cents: 3720,    // $37.20
+    subtotal_cents: 8400,    // $84.00
     tax_cents: 0,
-    shipping_cents: 200,     // $2.00
-    total_cents: 3920,       // $39.20
+    shipping_cents: 300,     // $3.00
+    total_cents: 8700,       // $87.00
     payment_status: 'pagado',
-    payment_date: '2026-01-23',
-    notes: 'Web Order 2652223405. Línea SAMSON G Track Pro (B075KL6ZLC) facturada con qty 0 → no enviada, no se importa.'
+    payment_date: '2026-01-21',
+    notes: 'Web Order 2689271050. Productos pre-creados con UPC como SKU; se vinculan por id sin modificar stock (ya cargado manualmente).'
   },
-  // Líneas REALES (con cantidad > 0). El prorrateo de envío lo calcula el script.
   items: [
     {
-      supplier_sku: 'B0BL2MRSK5',
-      asin: 'B0BL2MRSK5',
-      slug: 'rogob-ssd-m2-nvme-512gb',
-      name: 'ROGOB 512GB M.2 NVMe 2242 SSD',
-      brand: 'ROGOB',
-      category: 'computacion',
-      description: 'ROGOB 512GB M.2 NVMe 2242 SSD PCIe Gen3*2 B&M Key Disk Form Factor 42mm NGFF Internal Solid State Hard Drive for PC Laptop Desktop',
-      icon: 'hard-drive',
+      supplier_sku: 'B0C426QPDX',
+      link_to_product_id: 2,
+      update_stock: false,
+      name: 'Wyze Cam Pan v3 Indoor/Outdoor IP65 1080P Security Camera',
       quantity: 1,
-      unit_cost_cents: 1120  // $11.20
+      unit_cost_cents: 1800  // $18.00
     },
     {
-      supplier_sku: 'B0BZ3CKFWK',
-      asin: 'B0BZ3CKFWK',
-      slug: 'sgin-tablet-10-android-12-32gb',
-      name: 'SGIN Tablet 10.1" Android 12',
-      brand: 'SGIN',
-      category: 'computacion',
-      description: 'SGIN Tablet 10.1 Inch Android 12 Tablet, 2GB RAM 32GB ROM, Quad-Core A133 1.6GHz, 2MP+5MP Camera, Bluetooth, GPS, 5000mAh (Black)',
-      icon: 'tablet',
-      quantity: 1,
-      unit_cost_cents: 2600  // $26.00
+      supplier_sku: 'B09JVCL7JR',
+      link_to_product_id: 5,
+      update_stock: false,
+      name: 'Amazon Echo Buds (newest model) Glacier White',
+      quantity: 2,
+      unit_cost_cents: 3300  // $33.00
     }
   ]
 };
@@ -209,9 +200,10 @@ async function importInvoice() {
     for (const item of INVOICE.items) {
       const r = await upsertProduct(conn, item);
       productResults.push({ ...r, item });
+      const stockDelta = item.update_stock === false ? 0 : item.quantity;
       console.log(
         `  • ${item.supplier_sku} ${item.name} → ${r.action} ` +
-        `(product_id=${r.product_id}, +stock ${item.quantity}, ` +
+        `(product_id=${r.product_id}, +stock ${stockDelta}, ` +
         `cost_cents=${item.final_unit_cost_cents})`
       );
     }
